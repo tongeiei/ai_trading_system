@@ -2,6 +2,9 @@
 .env
 *.env
 !.env.example
+*.key
+*.pem
+*.pub
 
 # python
 __pycache__/
