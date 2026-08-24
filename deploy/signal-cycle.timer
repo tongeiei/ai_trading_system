@@ -1,0 +1,10 @@
+[Unit]
+Description=Run signal-cycle every M15 bar-close (+30s buffer for bar to settle)
+
+[Timer]
+OnCalendar=*:0/15:30
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

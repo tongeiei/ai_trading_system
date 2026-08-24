@@ -1,0 +1,13 @@
+[Unit]
+Description=AI Trading System - one-shot signal cycle (§16 Phase A/B)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ai_trading_system
+ExecStart=/home/ubuntu/ai_trading_system/.venv/bin/python3 /home/ubuntu/ai_trading_system/scripts/run_signal_cycle.py
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=120
