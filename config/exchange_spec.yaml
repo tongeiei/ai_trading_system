@@ -1,0 +1,17 @@
+exchange: binanceusdm
+environment: demo
+symbol: BTC/USDT:USDT
+contract_type: perpetual
+quote_currency: USDT
+precision:
+  amount_step: 0.0001
+  price_tick: 0.1
+limits:
+  amount_min: 0.0001
+  amount_max: 1000.0
+  min_notional: 50.0
+  price_min: 261.1
+  price_max: 809484.0
+maker_fee: 0.0002
+taker_fee: 0.0005
+contract_size: 1.0
