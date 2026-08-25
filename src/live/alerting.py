@@ -43,25 +43,25 @@ def _send(content: str) -> bool:
 
 
 def alert_trade_opened(symbol: str, action: str, qty: float, entry_price: float,
-                        sl_price: float, tp_price: float | None, risk_pct: float) -> None:
+                        sl_price: float, tp_price: float | None, risk_pct: float) -> bool:
     tp_str = f"{tp_price:.2f}" if tp_price else "n/a"
-    _send(
+    return _send(
         f"🟢 TRADE OPENED — {symbol}\n"
         f"{action} {qty} @ {entry_price:.2f} | SL {sl_price:.2f} | TP {tp_str} | risk {risk_pct:.2%}"
     )
 
 
-def alert_trade_closed(symbol: str, exit_reason: str, exit_price: float, r_multiple: float) -> None:
+def alert_trade_closed(symbol: str, exit_reason: str, exit_price: float, r_multiple: float) -> bool:
     emoji = "✅" if r_multiple > 0 else "❌"
-    _send(
+    return _send(
         f"{emoji} TRADE CLOSED — {symbol}\n"
         f"exit={exit_reason} @ {exit_price:.2f} | result={r_multiple:+.2f}R"
     )
 
 
-def alert_critical(message: str) -> None:
-    _send(f"🚨 CRITICAL — {message}")
+def alert_critical(message: str) -> bool:
+    return _send(f"🚨 CRITICAL — {message}")
 
 
-def alert_error(message: str) -> None:
-    _send(f"⚠️ ERROR — {message}")
+def alert_error(message: str) -> bool:
+    return _send(f"⚠️ ERROR — {message}")
