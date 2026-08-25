@@ -12,7 +12,6 @@ from pathlib import Path
 
 import ccxt
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import text
 
@@ -41,84 +40,92 @@ def load_table(query: str) -> pd.DataFrame:
 st.title("AI Trading System — Ops Dashboard")
 st.caption(f"Reading from `{DB_PATH}`")
 
-# --- System health row ---
-col1, col2, col3, col4 = st.columns(4)
-
-if HEARTBEAT_PATH.exists():
-    last_beat = float(HEARTBEAT_PATH.read_text().strip())
-    age_sec = time.time() - last_beat
-    heartbeat_status = "🟢 alive" if age_sec < 20 * 60 else "🔴 stale"  # signal cycle runs every 15min, allow slack
-    col1.metric("Heartbeat", heartbeat_status, f"{age_sec/60:.1f} min ago")
-else:
-    col1.metric("Heartbeat", "⚪ never run")
-
 signals_df = load_table("SELECT * FROM signals ORDER BY created_at_utc DESC")
 trades_df = load_table("SELECT * FROM trades ORDER BY entry_time_utc DESC")
 risk_df = load_table("SELECT * FROM risk_decisions ORDER BY received_at_utc DESC")
 
-col2.metric("Total signals logged", len(signals_df))
-col3.metric("Trades taken", len(trades_df))
 open_trades = trades_df[trades_df["exit_time_utc"].isna()] if len(trades_df) else pd.DataFrame()
-col4.metric("Open positions", len(open_trades))
+closed_trades_all = trades_df[trades_df["exit_time_utc"].notna()] if len(trades_df) else pd.DataFrame()
+
+
+@st.cache_data(ttl=30)
+def fetch_last_price(symbol: str) -> float | None:
+    try:
+        exchange = ccxt.binanceusdm({"enableRateLimit": True})
+        return float(exchange.fetch_ticker(symbol)["last"])
+    except Exception:
+        return None
+
+
+last_price = fetch_last_price(CHART_SYMBOL)
+
+# unrealized PnL for open positions (single-symbol system — direction inferred from SL vs entry)
+unrealized_pnl = 0.0
+if len(open_trades) and last_price is not None:
+    for _, t in open_trades.iterrows():
+        is_long = t["sl_price"] < t["entry_price"]
+        diff = (last_price - t["entry_price"]) if is_long else (t["entry_price"] - last_price)
+        unrealized_pnl += diff * t["qty"]
+
+realized_all_time = closed_trades_all["net_pnl"].sum() if len(closed_trades_all) else 0.0
+
+today_utc = pd.Timestamp.now(tz="UTC").normalize()
+realized_today = 0.0
+if len(closed_trades_all):
+    exit_dates = pd.to_datetime(closed_trades_all["exit_time_utc"], utc=True).dt.normalize()
+    realized_today = closed_trades_all.loc[exit_dates == today_utc, "net_pnl"].sum()
+
+closed_with_r = closed_trades_all[closed_trades_all["r_multiple"].notna()] if len(closed_trades_all) else pd.DataFrame()
+win_rate = (closed_with_r["r_multiple"] > 0).mean() if len(closed_with_r) else None
+
+if HEARTBEAT_PATH.exists():
+    last_beat = float(HEARTBEAT_PATH.read_text().strip())
+    age_sec = time.time() - last_beat
+    heartbeat_status = "🟢 live" if age_sec < 20 * 60 else "🔴 stale"  # signal cycle runs every 15min, allow slack
+    st.caption(f"{heartbeat_status} · heartbeat {age_sec/60:.1f} min ago · {CHART_SYMBOL}"
+               + (f" @ {last_price:.2f}" if last_price is not None else ""))
+else:
+    st.caption("⚪ heartbeat never run")
+
+# --- Summary stat cards (Realized / Unrealized / Total P&L / Open / Closed / Win rate) ---
+r1c1, r1c2 = st.columns(2)
+r1c1.metric("Realized วันนี้", f"${realized_today:+,.2f}")
+r1c2.metric("Unrealized", f"${unrealized_pnl:+,.2f}")
+
+r2c1, r2c2 = st.columns(2)
+r2c1.metric("P&L รวม", f"${(realized_all_time + unrealized_pnl):+,.2f}")
+r2c2.metric("ถืออยู่", len(open_trades))
+
+r3c1, r3c2 = st.columns(2)
+r3c1.metric("ปิดแล้ว", len(closed_trades_all))
+r3c2.metric("Win rate", f"{win_rate:.0%}" if win_rate is not None else "n/a")
+
+st.info(
+    f"💰 P&L รวมตั้งแต่เริ่มรัน = realized ${realized_all_time:+,.2f} "
+    f"({len(closed_trades_all)} ไม้) + floating ${unrealized_pnl:+,.2f} ({len(open_trades)} ไม้)"
+)
 
 st.divider()
 
-# --- Candlestick chart with trade markers ---
-st.subheader(f"Price chart — {CHART_SYMBOL} (M15)")
-
-
-@st.cache_data(ttl=60)
-def fetch_recent_candles(symbol: str, n_bars: int = 200) -> pd.DataFrame:
-    exchange = ccxt.binanceusdm({"enableRateLimit": True})
-    exchange.load_markets()
-    raw = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=n_bars)
-    df = pd.DataFrame(raw, columns=["ts_ms", "open", "high", "low", "close", "volume"])
-    df["time_utc"] = pd.to_datetime(df["ts_ms"], unit="ms", utc=True)
-    return df.drop(columns=["ts_ms"])
-
-
-try:
-    candles = fetch_recent_candles(CHART_SYMBOL)
-    fig = go.Figure(data=[go.Candlestick(
-        x=candles["time_utc"], open=candles["open"], high=candles["high"],
-        low=candles["low"], close=candles["close"], name=CHART_SYMBOL,
-    )])
-
-    # overlay trades that fall within the visible window
-    chart_start, chart_end = candles["time_utc"].min(), candles["time_utc"].max()
-    visible_trades = trades_df[
-        (pd.to_datetime(trades_df["entry_time_utc"], utc=True) >= chart_start) &
-        (pd.to_datetime(trades_df["entry_time_utc"], utc=True) <= chart_end)
-    ] if len(trades_df) else pd.DataFrame()
-
-    for _, t in visible_trades.iterrows():
-        is_long = t["sl_price"] < t["entry_price"]
-        entry_time = pd.to_datetime(t["entry_time_utc"], utc=True)
-        fig.add_trace(go.Scatter(
-            x=[entry_time], y=[t["entry_price"]], mode="markers",
-            marker=dict(symbol="triangle-up" if is_long else "triangle-down", size=14,
-                        color="lime" if is_long else "red"),
-            name=f"{'LONG' if is_long else 'SHORT'} entry", showlegend=False,
-            hovertext=f"{'LONG' if is_long else 'SHORT'} @ {t['entry_price']:.2f}",
-        ))
-        if pd.notna(t["exit_time_utc"]):
-            exit_time = pd.to_datetime(t["exit_time_utc"], utc=True)
-            fig.add_trace(go.Scatter(
-                x=[exit_time], y=[t["exit_price"]], mode="markers",
-                marker=dict(symbol="x", size=12,
-                            color="lime" if (t["r_multiple"] or 0) > 0 else "red"),
-                name="exit", showlegend=False,
-                hovertext=f"exit {t['exit_reason']} @ {t['exit_price']:.2f} ({t['r_multiple']:+.2f}R)",
-            ))
-
-    fig.update_layout(
-        height=500, xaxis_rangeslider_visible=False,
-        template="plotly_dark", margin=dict(l=10, r=10, t=10, b=10),
+# --- Open positions table ---
+st.subheader("ไม้เปิด")
+if len(open_trades) > 0:
+    open_view = open_trades.copy()
+    if last_price is not None:
+        def _upnl_pct(row):
+            is_long = row["sl_price"] < row["entry_price"]
+            diff_pct = (last_price - row["entry_price"]) / row["entry_price"] * 100
+            return diff_pct if is_long else -diff_pct
+        open_view["now"] = last_price
+        open_view["uPnL%"] = open_view.apply(_upnl_pct, axis=1)
+    st.dataframe(
+        open_view[["trade_id", "symbol", "entry_time_utc", "entry_price"]
+                   + (["now", "uPnL%"] if last_price is not None else [])
+                   + ["qty", "sl_price", "tp_price"]],
+        use_container_width=True, hide_index=True,
     )
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption("▲ green = LONG entry · ▼ red = SHORT entry · ✕ = exit (green=win, red=loss). Last 200 M15 bars, live from exchange.")
-except Exception as e:
-    st.warning(f"Could not fetch live chart data: {e}")
+else:
+    st.info("ไม่มีไม้เปิดอยู่")
 
 st.divider()
 
