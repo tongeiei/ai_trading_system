@@ -2,6 +2,7 @@ import pytest
 
 from src.live.guards import (
     spread_guard, stale_data_guard, heartbeat_guard, retry_with_limit, RetryLimitExceeded,
+    rolling_winrate_risk_multiplier,
 )
 
 
@@ -53,3 +54,34 @@ def test_retry_with_limit_raises_after_max_retries_never_loops_forever():
     with pytest.raises(RetryLimitExceeded):
         retry_with_limit(always_fails, max_retries=2)
     assert calls["n"] == 3  # initial attempt + 2 retries, then stop — never unbounded
+
+
+def test_winrate_guard_insufficient_history_returns_full_risk():
+    # only 10 trades, below min_trades=20 -> not enough signal to act on
+    recent = [0.5, -1.0, -1.0, 0.3, -1.0, -1.0, -1.0, 0.2, -1.0, -1.0]
+    assert rolling_winrate_risk_multiplier(recent, min_trades=20) == 1.0
+
+
+def test_winrate_guard_reduces_risk_on_2023h2_style_regime():
+    # mirrors the walk-forward finding: win rate ~27% over the last 20 trades
+    rng_wins = [0.5] * 5 + [-1.0] * 15  # 5/20 = 25% win rate
+    assert rolling_winrate_risk_multiplier(rng_wins, window=20, winrate_threshold=0.30) == 0.5
+
+
+def test_winrate_guard_full_risk_when_winrate_healthy():
+    healthy = [0.5] * 9 + [-1.0] * 11  # 45% win rate, above 30% threshold
+    assert rolling_winrate_risk_multiplier(healthy, window=20, winrate_threshold=0.30) == 1.0
+
+
+def test_winrate_guard_only_looks_at_tail_window():
+    # first 20 trades were terrible, but the most recent 20 (the tail) are healthy —
+    # guard must react to CURRENT conditions, not stale history
+    old_bad = [-1.0] * 20
+    recent_healthy = [0.5] * 9 + [-1.0] * 11
+    combined = old_bad + recent_healthy
+    assert rolling_winrate_risk_multiplier(combined, window=20, winrate_threshold=0.30) == 1.0
+
+
+def test_winrate_guard_custom_reduced_multiplier():
+    bad = [-1.0] * 15 + [0.5] * 5  # 25% win rate
+    assert rolling_winrate_risk_multiplier(bad, window=20, reduced_multiplier=0.25) == 0.25

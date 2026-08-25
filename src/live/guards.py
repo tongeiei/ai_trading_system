@@ -24,6 +24,34 @@ def heartbeat_guard(last_heartbeat_epoch: float, now_epoch: float | None = None,
     return (now_epoch - last_heartbeat_epoch) <= max_age_sec
 
 
+def rolling_winrate_risk_multiplier(
+    recent_r_multiples: list[float],
+    window: int = 20,
+    winrate_threshold: float = 0.30,
+    min_trades: int = 20,
+    reduced_multiplier: float = 0.5,
+) -> float:
+    """Early-warning risk cut, added after docs/FINDINGS.md's 2023-H2 walk-forward
+    result: a whipsaw regime showed win rate ~27% and both LONG/SHORT losing
+    together, well before daily-loss or drawdown thresholds would have fired.
+
+    Checks the win rate over the last `window` CLOSED trades (net_r_multiple,
+    ordered oldest->newest — only the tail is used). If it's below
+    `winrate_threshold`, returns `reduced_multiplier` (halve risk by default)
+    instead of waiting for DD/daily-loss to catch up.
+
+    Returns 1.0 (no reduction) if fewer than `min_trades` are available —
+    a rolling window this short is too noisy to act on with fewer samples
+    than that (see §14.4 sample-size discipline).
+    """
+    if len(recent_r_multiples) < min_trades:
+        return 1.0
+
+    tail = recent_r_multiples[-window:]
+    win_rate = sum(1 for r in tail if r > 0) / len(tail)
+    return reduced_multiplier if win_rate < winrate_threshold else 1.0
+
+
 class RetryLimitExceeded(Exception):
     pass
 

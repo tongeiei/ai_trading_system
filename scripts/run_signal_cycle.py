@@ -27,17 +27,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from src.data.db import init_db
+from sqlalchemy import select
+
+from src.data.db import init_db, trades as trades_table
 from src.live.signal_service import generate_live_signal
 from src.live.order_executor import execute_signal_with_logging, OrderRejected
 from src.live.reconcile import reconcile_symbol
 from src.live.logging_store import log_signal
-from src.live.guards import heartbeat_guard
+from src.live.guards import heartbeat_guard, rolling_winrate_risk_multiplier
 from src.risk.sizing import ExchangeSpec
 
 SYMBOL = "ETH/USDT:USDT"
 LOCKED_CONFIG = {"adx": 35, "sl": 2.5}
-RISK_PCT = 0.01  # 1% — conservative, per §9.2 "start low until calibration proves itself"
+# 0.5%, not the originally-planned 1-2% — lowered per docs/FINDINGS.md after
+# walk-forward showed the ETH edge is real but unstable (2023 H2 was
+# significantly negative, a regime the single train/holdout split missed).
+BASE_RISK_PCT = 0.005
+WINRATE_WINDOW = 20
+WINRATE_THRESHOLD = 0.30
 HEARTBEAT_PATH = PROJECT_ROOT / "data" / "heartbeat.txt"
 DB_PATH = str(PROJECT_ROOT / "data" / "trading.db")
 
@@ -79,11 +86,28 @@ def main():
 
     print(f"Bar: {latest['time_utc']} | Regime: {latest['regime']} | Action: {latest['action']}")
 
+    # §19 early-warning: check the last WINRATE_WINDOW closed trades before
+    # sizing this one — a win rate this low showed up in the 2023-H2 walk-forward
+    # fold well before any DD/daily-loss threshold would have reacted.
+    with engine.connect() as conn:
+        recent_closed = conn.execute(
+            select(trades_table.c.r_multiple)
+            .where(trades_table.c.r_multiple.isnot(None))
+            .order_by(trades_table.c.exit_time_utc.asc())
+        ).fetchall()
+    recent_r = [row.r_multiple for row in recent_closed]
+    risk_multiplier = rolling_winrate_risk_multiplier(recent_r, window=WINRATE_WINDOW, winrate_threshold=WINRATE_THRESHOLD)
+    risk_pct = BASE_RISK_PCT * risk_multiplier
+    if risk_multiplier < 1.0:
+        recent_winrate = sum(1 for r in recent_r[-WINRATE_WINDOW:] if r > 0) / min(len(recent_r), WINRATE_WINDOW)
+        print(f"WARNING: last {WINRATE_WINDOW} trades win rate {recent_winrate:.0%} < {WINRATE_THRESHOLD:.0%} "
+              f"— risk cut to {risk_pct:.3%} (x{risk_multiplier})")
+
     signal_id = log_signal(
         engine, SYMBOL, "M15", latest["action"], latest["regime"],
         float(latest["sl_price"]) if latest["action"] != "NO_TRADE" else None,
         float(latest["tp_price"]) if latest["action"] != "NO_TRADE" else None,
-        RISK_PCT,
+        risk_pct,
     )
 
     if latest["action"] == "NO_TRADE":
@@ -102,7 +126,7 @@ def main():
         result = execute_signal_with_logging(
             exchange, engine, SYMBOL, "M15", latest["action"], latest["regime"],
             entry_price=float(latest["close"]), sl_price=float(latest["sl_price"]),
-            tp_price=float(latest["tp_price"]), risk_pct=RISK_PCT, equity=equity,
+            tp_price=float(latest["tp_price"]), risk_pct=risk_pct, equity=equity,
             exchange_spec=exchange_spec,
         )
         print(f"EXECUTED: qty={result['qty']}, trade_id={result['trade_id']}")
