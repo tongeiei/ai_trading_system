@@ -18,13 +18,18 @@ def now_utc() -> datetime:
 
 
 def log_signal(engine: Engine, symbol: str, timeframe: str, action: str, regime: str,
-                sl_price: float, tp_price: float, risk_pct: float, model_version: str = "v0_rules") -> str:
+                sl_price: float, tp_price: float, risk_pct: float, model_version: str = "v0_rules",
+                ev: "EVEstimate | None" = None) -> str:
     signal_id = str(uuid.uuid4())
     with engine.begin() as conn:
         conn.execute(insert(signals).values(
             signal_id=signal_id, created_at_utc=now_utc(), symbol=symbol, timeframe=timeframe,
             action=action, regime=regime, suggested_sl=sl_price, suggested_tp=tp_price,
             suggested_risk_pct=risk_pct, model_version=model_version, decision=None, decision_reason=None,
+            est_win_rate=ev.win_rate if ev else None,
+            expected_move_pct=ev.expected_move_pct if ev else None,
+            trading_cost_pct=ev.trading_cost_pct if ev else None,
+            ev_r=ev.ev_r if ev else None,
         ))
     return signal_id
 

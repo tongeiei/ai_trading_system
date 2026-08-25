@@ -60,6 +60,31 @@ col4.metric("Open positions", len(open_trades))
 
 st.divider()
 
+# --- Latest signal EV panel ---
+# Historical-stats based (ETH backtest CAL fold), NOT an ML probability —
+# the ML model was dropped at the P5 gate (AUC ~0.497 on holdout, see
+# docs/FINDINGS.md). Labeled honestly to avoid implying a capability that
+# doesn't exist.
+st.subheader("Latest signal")
+if len(signals_df) > 0:
+    latest_signal = signals_df.iloc[0]
+    if pd.notna(latest_signal.get("ev_r")):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Historical win rate", f"{latest_signal['est_win_rate']:.0%}")
+        c2.metric("Expected move", f"{latest_signal['expected_move_pct']:+.3f}%")
+        c3.metric("Trading cost", f"{-abs(latest_signal['trading_cost_pct']):.3f}%")
+        gate_passed = latest_signal["ev_r"] >= 0.15
+        c4.metric("EV (R)", f"{latest_signal['ev_r']:+.3f}R", "PASS" if gate_passed else "below threshold")
+        st.caption("Based on ETH backtest historical base rate — not an ML prediction (see docs/FINDINGS.md, P5 gate).")
+        final_action = latest_signal["action"] if latest_signal["decision"] != "REJECTED" else "NO_TRADE"
+        st.markdown(f"**→ {final_action}**" + ("" if gate_passed or final_action == "NO_TRADE" else " (EV gate rejected)"))
+    else:
+        st.info(f"Latest bar: regime={latest_signal['regime']}, action=NO_TRADE (no candidate setup — nothing to score).")
+else:
+    st.info("No signals logged yet.")
+
+st.divider()
+
 # --- Equity curve ---
 st.subheader("Equity curve (cumulative R)")
 closed_trades = trades_df[trades_df["r_multiple"].notna()] if len(trades_df) else pd.DataFrame()
@@ -89,7 +114,8 @@ action_filter = st.multiselect(
 )
 filtered_signals = signals_df[signals_df["action"].isin(action_filter)] if len(signals_df) else signals_df
 st.dataframe(
-    filtered_signals[["created_at_utc", "symbol", "action", "regime", "decision", "decision_reason"]].head(200),
+    filtered_signals[["created_at_utc", "symbol", "action", "regime", "decision", "decision_reason",
+                       "est_win_rate", "expected_move_pct", "trading_cost_pct", "ev_r"]].head(200),
     use_container_width=True, hide_index=True,
 )
 

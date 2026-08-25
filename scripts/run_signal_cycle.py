@@ -35,6 +35,8 @@ from src.live.order_executor import execute_signal_with_logging, OrderRejected
 from src.live.reconcile import reconcile_symbol
 from src.live.logging_store import log_signal
 from src.live.guards import heartbeat_guard, rolling_winrate_risk_multiplier
+from src.live.position_timeout import close_expired_positions
+from src.live.ev_estimate import estimate_ev
 from src.risk.sizing import ExchangeSpec
 
 SYMBOL = "ETH/USDT:USDT"
@@ -69,6 +71,13 @@ def main():
 
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}] cycle start")
 
+    # close anything that's been open >12h before doing anything else — mirrors
+    # triple_barrier.MAX_HOLD_BARS_M1, see position_timeout.py docstring for
+    # why this can't be an exchange-native order and has to be checked here
+    closed = close_expired_positions(exchange, engine, SYMBOL)
+    if closed:
+        print(f"Closed {len(closed)} expired position(s) via timeout.")
+
     # L4/§19: refuse to act if there's already an unprotected or unexpected position
     recon = reconcile_symbol(exchange, SYMBOL)
     if recon.severity == "CRITICAL":
@@ -85,6 +94,20 @@ def main():
     latest = signals.iloc[-1]
 
     print(f"Bar: {latest['time_utc']} | Regime: {latest['regime']} | Action: {latest['action']}")
+
+    # §8 EV gate — historical-stats based (NOT ML, see ev_estimate.py docstring).
+    # sl_distance is computed by v0_rules for every bar regardless of action,
+    # so this can run even for candidates that later get downgraded here.
+    ev = None
+    original_action = latest["action"]
+    if original_action != "NO_TRADE":
+        ev = estimate_ev(float(latest["close"]), float(latest["sl_distance"]))
+        print(f"EV check: win_rate={ev.win_rate:.1%} expected_move={ev.expected_move_pct:+.3f}% "
+              f"trading_cost={-ev.trading_cost_pct:.3f}% ev={ev.ev_r:+.3f}R -> "
+              f"{'PASS' if ev.passes_gate else 'REJECTED (cost > edge)'}")
+        if not ev.passes_gate:
+            latest = latest.copy()
+            latest["action"] = "NO_TRADE"
 
     # §19 early-warning: check the last WINRATE_WINDOW closed trades before
     # sizing this one — a win rate this low showed up in the 2023-H2 walk-forward
@@ -107,7 +130,7 @@ def main():
         engine, SYMBOL, "M15", latest["action"], latest["regime"],
         float(latest["sl_price"]) if latest["action"] != "NO_TRADE" else None,
         float(latest["tp_price"]) if latest["action"] != "NO_TRADE" else None,
-        risk_pct,
+        risk_pct, ev=ev,
     )
 
     if latest["action"] == "NO_TRADE":

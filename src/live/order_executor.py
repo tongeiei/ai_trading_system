@@ -45,13 +45,17 @@ def execute_signal_with_logging(
 
     log_risk_decision(engine, signal_id, accepted=True, computed_qty=qty, equity_at_decision=equity)
 
-    result = place_entry_with_sl(exchange, symbol, action, qty, sl_price)
+    result = place_entry_with_sl_and_tp(exchange, symbol, action, qty, sl_price, tp_price)
 
     log_order(engine, signal_id, result["entry_order"]["id"], "entry",
               "buy" if action == "LONG" else "sell", qty, entry_price, result["entry_order"]["status"])
     log_order(engine, signal_id, result["sl_order"]["id"], "sl",
               "sell" if action == "LONG" else "buy", qty, sl_price, result["sl_order"]["status"],
               algo_order_id=result["sl_order"]["id"])
+    if result.get("tp_order"):
+        log_order(engine, signal_id, result["tp_order"]["id"], "tp",
+                  "sell" if action == "LONG" else "buy", qty, tp_price, result["tp_order"]["status"],
+                  algo_order_id=result["tp_order"]["id"])
 
     trade_id = log_trade_open(engine, signal_id, symbol, entry_price, qty, sl_price, tp_price)
 
@@ -65,10 +69,32 @@ def place_entry_with_sl(
     qty: float,
     sl_price: float,
 ) -> dict:
-    """Places a market entry, then a reduce-only stop-market SL. Returns both
-    order responses. If the SL order fails to place, the entry is immediately
-    closed — an unprotected position must never be left open (§9 principle:
-    risk checks are not optional, ever).
+    """Kept for backward compat / tests — prefer place_entry_with_sl_and_tp,
+    which also places the TP order the backtest's triple_barrier labeling
+    assumes exists. Without it, live positions have no TP exit at all."""
+    return place_entry_with_sl_and_tp(exchange, symbol, action, qty, sl_price, tp_price=None)
+
+
+def place_entry_with_sl_and_tp(
+    exchange: ccxt.Exchange,
+    symbol: str,
+    action: str,      # "LONG" or "SHORT"
+    qty: float,
+    sl_price: float,
+    tp_price: float | None,
+) -> dict:
+    """Places a market entry, a reduce-only stop-market SL, and (if given) a
+    reduce-only take-profit-market TP. Both exit orders are exchange-native —
+    same reasoning as the SL-only version: they must survive a process crash.
+
+    §16 bug found in testing: without a TP order, a live position would only
+    ever exit via SL, never matching the backtest's TP-hit outcomes at all —
+    a silent divergence between backtested and live behavior.
+
+    If SL placement fails, the entry is force-closed immediately (unprotected
+    position must never be left open). If only the TP fails, the position is
+    NOT closed — SL protection alone is acceptable; a missing TP just means
+    this trade will ride until SL or the 12h timeout (see run_signal_cycle.py).
     """
     side = "buy" if action == "LONG" else "sell"
     close_side = "sell" if action == "LONG" else "buy"
@@ -85,7 +111,17 @@ def place_entry_with_sl(
         exchange.create_order(symbol, "market", close_side, qty, params={"reduceOnly": True})
         raise OrderRejected(f"SL placement failed, position force-closed to avoid unprotected exposure: {e}") from e
 
-    return {"entry_order": entry_order, "sl_order": sl_order}
+    tp_order = None
+    if tp_price is not None:
+        try:
+            tp_order = exchange.create_order(
+                symbol, "TAKE_PROFIT_MARKET", close_side, qty,
+                params={"stopPrice": tp_price, "reduceOnly": True},
+            )
+        except Exception:
+            pass  # SL still protects the position; not fatal, just no TP exit for this trade
+
+    return {"entry_order": entry_order, "sl_order": sl_order, "tp_order": tp_order}
 
 
 def fetch_open_algo_orders(exchange: ccxt.Exchange, symbol: str | None = None) -> list[dict]:

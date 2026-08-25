@@ -41,6 +41,13 @@ signals = Table(
     Column("model_version", String),
     Column("decision", String),          # ACCEPTED/REJECTED
     Column("decision_reason", String),
+    # historical-stats EV gate (§8, src/live/ev_estimate.py) — NOT ML,
+    # see that module's docstring for why. Populated for every candidate
+    # setup v0_rules triggers, null for regime-based NO_TRADE bars.
+    Column("est_win_rate", Float, nullable=True),
+    Column("expected_move_pct", Float, nullable=True),
+    Column("trading_cost_pct", Float, nullable=True),
+    Column("ev_r", Float, nullable=True),
 )
 
 risk_decisions = Table(
@@ -88,7 +95,27 @@ def get_engine(db_path: str = "data/trading.db"):
 def init_db(db_path: str = "data/trading.db"):
     engine = get_engine(db_path)
     metadata.create_all(engine)
+    _migrate_add_missing_columns(engine)
     return engine
+
+
+def _migrate_add_missing_columns(engine):
+    """SQLite has no ALTER TABLE ADD COLUMN IF NOT EXISTS — for a DB file
+    created before ev_estimate columns existed, add them idempotently
+    (ignore "duplicate column" if they're already there)."""
+    from sqlalchemy import text
+    new_columns = [
+        ("signals", "est_win_rate", "FLOAT"),
+        ("signals", "expected_move_pct", "FLOAT"),
+        ("signals", "trading_cost_pct", "FLOAT"),
+        ("signals", "ev_r", "FLOAT"),
+    ]
+    with engine.begin() as conn:
+        for table, col, coltype in new_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}"))
+            except Exception:
+                pass  # column already exists
 
 
 if __name__ == "__main__":
