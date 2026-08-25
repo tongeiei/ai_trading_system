@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Trading System - Streamlit ops dashboard (§18)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ai_trading_system
+ExecStart=/home/ubuntu/ai_trading_system/.venv/bin/streamlit run src/dashboard/app.py --server.headless=true --server.address=127.0.0.1 --server.port=8501
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
