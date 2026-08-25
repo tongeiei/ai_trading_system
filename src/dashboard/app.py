@@ -10,7 +10,9 @@ import sys
 import time
 from pathlib import Path
 
+import ccxt
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import text
 
@@ -20,6 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.data.db import get_engine
 DB_PATH = str(PROJECT_ROOT / "data" / "trading.db")
 HEARTBEAT_PATH = PROJECT_ROOT / "data" / "heartbeat.txt"
+CHART_SYMBOL = "ETH/USDT:USDT"
 
 st.set_page_config(page_title="AI Trading System — Ops Dashboard", layout="wide")
 
@@ -57,6 +60,65 @@ col2.metric("Total signals logged", len(signals_df))
 col3.metric("Trades taken", len(trades_df))
 open_trades = trades_df[trades_df["exit_time_utc"].isna()] if len(trades_df) else pd.DataFrame()
 col4.metric("Open positions", len(open_trades))
+
+st.divider()
+
+# --- Candlestick chart with trade markers ---
+st.subheader(f"Price chart — {CHART_SYMBOL} (M15)")
+
+
+@st.cache_data(ttl=60)
+def fetch_recent_candles(symbol: str, n_bars: int = 200) -> pd.DataFrame:
+    exchange = ccxt.binanceusdm({"enableRateLimit": True})
+    exchange.load_markets()
+    raw = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=n_bars)
+    df = pd.DataFrame(raw, columns=["ts_ms", "open", "high", "low", "close", "volume"])
+    df["time_utc"] = pd.to_datetime(df["ts_ms"], unit="ms", utc=True)
+    return df.drop(columns=["ts_ms"])
+
+
+try:
+    candles = fetch_recent_candles(CHART_SYMBOL)
+    fig = go.Figure(data=[go.Candlestick(
+        x=candles["time_utc"], open=candles["open"], high=candles["high"],
+        low=candles["low"], close=candles["close"], name=CHART_SYMBOL,
+    )])
+
+    # overlay trades that fall within the visible window
+    chart_start, chart_end = candles["time_utc"].min(), candles["time_utc"].max()
+    visible_trades = trades_df[
+        (pd.to_datetime(trades_df["entry_time_utc"], utc=True) >= chart_start) &
+        (pd.to_datetime(trades_df["entry_time_utc"], utc=True) <= chart_end)
+    ] if len(trades_df) else pd.DataFrame()
+
+    for _, t in visible_trades.iterrows():
+        is_long = t["sl_price"] < t["entry_price"]
+        entry_time = pd.to_datetime(t["entry_time_utc"], utc=True)
+        fig.add_trace(go.Scatter(
+            x=[entry_time], y=[t["entry_price"]], mode="markers",
+            marker=dict(symbol="triangle-up" if is_long else "triangle-down", size=14,
+                        color="lime" if is_long else "red"),
+            name=f"{'LONG' if is_long else 'SHORT'} entry", showlegend=False,
+            hovertext=f"{'LONG' if is_long else 'SHORT'} @ {t['entry_price']:.2f}",
+        ))
+        if pd.notna(t["exit_time_utc"]):
+            exit_time = pd.to_datetime(t["exit_time_utc"], utc=True)
+            fig.add_trace(go.Scatter(
+                x=[exit_time], y=[t["exit_price"]], mode="markers",
+                marker=dict(symbol="x", size=12,
+                            color="lime" if (t["r_multiple"] or 0) > 0 else "red"),
+                name="exit", showlegend=False,
+                hovertext=f"exit {t['exit_reason']} @ {t['exit_price']:.2f} ({t['r_multiple']:+.2f}R)",
+            ))
+
+    fig.update_layout(
+        height=500, xaxis_rangeslider_visible=False,
+        template="plotly_dark", margin=dict(l=10, r=10, t=10, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("▲ green = LONG entry · ▼ red = SHORT entry · ✕ = exit (green=win, red=loss). Last 200 M15 bars, live from exchange.")
+except Exception as e:
+    st.warning(f"Could not fetch live chart data: {e}")
 
 st.divider()
 
