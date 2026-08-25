@@ -35,8 +35,9 @@ from src.live.order_executor import execute_signal_with_logging, OrderRejected
 from src.live.reconcile import reconcile_symbol
 from src.live.logging_store import log_signal
 from src.live.guards import heartbeat_guard, rolling_winrate_risk_multiplier
-from src.live.position_timeout import close_expired_positions
+from src.live.position_timeout import close_expired_positions, detect_and_close_organic_exits
 from src.live.ev_estimate import estimate_ev
+from src.live.alerting import alert_trade_opened, alert_trade_closed, alert_critical, alert_error
 from src.risk.sizing import ExchangeSpec
 
 SYMBOL = "ETH/USDT:USDT"
@@ -77,11 +78,22 @@ def main():
     closed = close_expired_positions(exchange, engine, SYMBOL)
     if closed:
         print(f"Closed {len(closed)} expired position(s) via timeout.")
+        for trade_id in closed:
+            with engine.connect() as conn:
+                t = conn.execute(select(trades_table).where(trades_table.c.trade_id == trade_id)).fetchone()
+            alert_trade_closed(SYMBOL, "TIMEOUT", t.exit_price, t.r_multiple)
+
+    # detect SL/TP that already fired on the exchange — our process never
+    # gets a callback for these, so this is the only way to notice
+    organic_closes = detect_and_close_organic_exits(exchange, engine, SYMBOL)
+    for c in organic_closes:
+        alert_trade_closed(SYMBOL, c["exit_reason"], c["exit_price"], c["r_multiple"])
 
     # L4/§19: refuse to act if there's already an unprotected or unexpected position
     recon = reconcile_symbol(exchange, SYMBOL)
     if recon.severity == "CRITICAL":
         print(f"CRITICAL: {recon.detail} — skipping this cycle, needs manual intervention.")
+        alert_critical(f"{SYMBOL}: {recon.detail}")
         return
     if recon.has_position:
         print(f"Position already open ({recon.position_contracts} contracts) — skipping, no pyramiding.")
@@ -153,14 +165,18 @@ def main():
             exchange_spec=exchange_spec,
         )
         print(f"EXECUTED: qty={result['qty']}, trade_id={result['trade_id']}")
+        alert_trade_opened(SYMBOL, latest["action"], result["qty"], float(latest["close"]),
+                            float(latest["sl_price"]), float(latest["tp_price"]), risk_pct)
     except OrderRejected as e:
         print(f"Order rejected: {e}")
+        alert_error(f"{SYMBOL} order rejected: {e}")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as e:
         print("UNHANDLED EXCEPTION in signal cycle:")
         traceback.print_exc()
+        alert_error(f"signal cycle crashed: {e}")
         raise
