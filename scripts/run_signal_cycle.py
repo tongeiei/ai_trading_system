@@ -48,8 +48,9 @@ SYMBOLS = [
     {"symbol": "ETH/USDT:USDT", "config": {"adx": 35, "sl": 2.5}, "base_risk_pct": 0.005},
     # XRP is a vetted but TIER-2 candidate (docs/FINDINGS.md 2026-08): a real but
     # fragile V0 edge (holdout PF 1.18, fails at 3x slippage), low strategy-return
-    # correlation to ETH. Uncomment to paper-trade it at half risk once ready.
-    # {"symbol": "XRP/USDT:USDT", "config": {"adx": 35, "sl": 2.5}, "base_risk_pct": 0.0025},
+    # correlation to ETH. Paper-trading (demo) at half ETH's risk while more
+    # live data accumulates — not a live-capital decision, still demo trading.
+    {"symbol": "XRP/USDT:USDT", "config": {"adx": 35, "sl": 2.5}, "base_risk_pct": 0.0025},
 ]
 WINRATE_WINDOW = 20
 WINRATE_THRESHOLD = 0.30
