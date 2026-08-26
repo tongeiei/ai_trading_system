@@ -33,19 +33,24 @@ from src.data.db import init_db, trades as trades_table
 from src.live.signal_service import generate_live_signal
 from src.live.order_executor import execute_signal_with_logging, OrderRejected
 from src.live.reconcile import reconcile_symbol
-from src.live.logging_store import log_signal
+from src.live.logging_store import log_signal, recent_closed_r_multiples
 from src.live.guards import heartbeat_guard, rolling_winrate_risk_multiplier
 from src.live.position_timeout import close_expired_positions, detect_and_close_organic_exits
 from src.live.ev_estimate import estimate_ev
 from src.live.alerting import alert_trade_opened, alert_trade_closed, alert_critical, alert_error
 from src.risk.sizing import ExchangeSpec
 
-SYMBOL = "ETH/USDT:USDT"
-LOCKED_CONFIG = {"adx": 35, "sl": 2.5}
-# 0.5%, not the originally-planned 1-2% — lowered per docs/FINDINGS.md after
-# walk-forward showed the ETH edge is real but unstable (2023 H2 was
-# significantly negative, a regime the single train/holdout split missed).
-BASE_RISK_PCT = 0.005
+# Each entry is one independently-traded symbol. base_risk_pct is per-symbol so a
+# weaker/less-proven candidate can run at reduced size without touching the anchor.
+# ETH: 0.5% (not the planned 1-2%) — lowered per docs/FINDINGS.md after walk-forward
+# showed the edge is real but unstable (2023 H2 was significantly negative).
+SYMBOLS = [
+    {"symbol": "ETH/USDT:USDT", "config": {"adx": 35, "sl": 2.5}, "base_risk_pct": 0.005},
+    # XRP is a vetted but TIER-2 candidate (docs/FINDINGS.md 2026-08): a real but
+    # fragile V0 edge (holdout PF 1.18, fails at 3x slippage), low strategy-return
+    # correlation to ETH. Uncomment to paper-trade it at half risk once ready.
+    # {"symbol": "XRP/USDT:USDT", "config": {"adx": 35, "sl": 2.5}, "base_risk_pct": 0.0025},
+]
 WINRATE_WINDOW = 20
 WINRATE_THRESHOLD = 0.30
 HEARTBEAT_PATH = PROJECT_ROOT / "data" / "heartbeat.txt"
@@ -57,52 +62,40 @@ def write_heartbeat():
     HEARTBEAT_PATH.write_text(str(time.time()))
 
 
-def main():
-    write_heartbeat()
-    engine = init_db(DB_PATH)
-
-    exchange = ccxt.binanceusdm({
-        "apiKey": os.getenv("BINANCE_TESTNET_API_KEY"),
-        "secret": os.getenv("BINANCE_TESTNET_API_SECRET"),
-        "enableRateLimit": True,
-    })
-    exchange.enable_demo_trading(True)
-    markets = exchange.load_markets()
-    spec = markets[SYMBOL]
-
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}] cycle start")
+def run_symbol_cycle(exchange, public_exchange, engine, markets, symbol, config, base_risk_pct):
+    """One symbol's full cycle. Isolated so one symbol's failure (a bad fetch,
+    a rejected order) never blocks the others — main() catches per symbol."""
+    spec = markets[symbol]
+    print(f"\n--- {symbol} ---")
 
     # close anything that's been open >12h before doing anything else — mirrors
     # triple_barrier.MAX_HOLD_BARS_M1, see position_timeout.py docstring for
     # why this can't be an exchange-native order and has to be checked here
-    closed = close_expired_positions(exchange, engine, SYMBOL)
+    closed = close_expired_positions(exchange, engine, symbol)
     if closed:
         print(f"Closed {len(closed)} expired position(s) via timeout.")
         for trade_id in closed:
             with engine.connect() as conn:
                 t = conn.execute(select(trades_table).where(trades_table.c.trade_id == trade_id)).fetchone()
-            alert_trade_closed(SYMBOL, "TIMEOUT", t.exit_price, t.r_multiple)
+            alert_trade_closed(symbol, "TIMEOUT", t.exit_price, t.r_multiple)
 
     # detect SL/TP that already fired on the exchange — our process never
     # gets a callback for these, so this is the only way to notice
-    organic_closes = detect_and_close_organic_exits(exchange, engine, SYMBOL)
+    organic_closes = detect_and_close_organic_exits(exchange, engine, symbol)
     for c in organic_closes:
-        alert_trade_closed(SYMBOL, c["exit_reason"], c["exit_price"], c["r_multiple"])
+        alert_trade_closed(symbol, c["exit_reason"], c["exit_price"], c["r_multiple"])
 
     # L4/§19: refuse to act if there's already an unprotected or unexpected position
-    recon = reconcile_symbol(exchange, SYMBOL)
+    recon = reconcile_symbol(exchange, symbol)
     if recon.severity == "CRITICAL":
-        print(f"CRITICAL: {recon.detail} — skipping this cycle, needs manual intervention.")
-        alert_critical(f"{SYMBOL}: {recon.detail}")
+        print(f"CRITICAL: {recon.detail} — skipping this symbol, needs manual intervention.")
+        alert_critical(f"{symbol}: {recon.detail}")
         return
     if recon.has_position:
         print(f"Position already open ({recon.position_contracts} contracts) — skipping, no pyramiding.")
         return
 
-    # public data fetch doesn't need auth — use a plain instance for market data
-    public_exchange = ccxt.binanceusdm({"enableRateLimit": True})
-    public_exchange.load_markets()
-    signals = generate_live_signal(public_exchange, SYMBOL, LOCKED_CONFIG["adx"], LOCKED_CONFIG["sl"])
+    signals = generate_live_signal(public_exchange, symbol, config["adx"], config["sl"])
     latest = signals.iloc[-1]
 
     print(f"Bar: {latest['time_utc']} | Regime: {latest['regime']} | Action: {latest['action']}")
@@ -121,25 +114,20 @@ def main():
             latest = latest.copy()
             latest["action"] = "NO_TRADE"
 
-    # §19 early-warning: check the last WINRATE_WINDOW closed trades before
-    # sizing this one — a win rate this low showed up in the 2023-H2 walk-forward
-    # fold well before any DD/daily-loss threshold would have reacted.
-    with engine.connect() as conn:
-        recent_closed = conn.execute(
-            select(trades_table.c.r_multiple)
-            .where(trades_table.c.r_multiple.isnot(None))
-            .order_by(trades_table.c.exit_time_utc.asc())
-        ).fetchall()
-    recent_r = [row.r_multiple for row in recent_closed]
+    # §19 early-warning: check the last WINRATE_WINDOW closed trades FOR THIS
+    # SYMBOL before sizing — a win rate this low showed up in the 2023-H2
+    # walk-forward fold well before any DD/daily-loss threshold would react.
+    # Per-symbol so one symbol's slump doesn't throttle another's sizing.
+    recent_r = recent_closed_r_multiples(engine, symbol)
     risk_multiplier = rolling_winrate_risk_multiplier(recent_r, window=WINRATE_WINDOW, winrate_threshold=WINRATE_THRESHOLD)
-    risk_pct = BASE_RISK_PCT * risk_multiplier
+    risk_pct = base_risk_pct * risk_multiplier
     if risk_multiplier < 1.0:
         recent_winrate = sum(1 for r in recent_r[-WINRATE_WINDOW:] if r > 0) / min(len(recent_r), WINRATE_WINDOW)
-        print(f"WARNING: last {WINRATE_WINDOW} trades win rate {recent_winrate:.0%} < {WINRATE_THRESHOLD:.0%} "
+        print(f"WARNING: last {WINRATE_WINDOW} {symbol} trades win rate {recent_winrate:.0%} < {WINRATE_THRESHOLD:.0%} "
               f"— risk cut to {risk_pct:.3%} (x{risk_multiplier})")
 
-    signal_id = log_signal(
-        engine, SYMBOL, "M15", latest["action"], latest["regime"],
+    log_signal(
+        engine, symbol, "M15", latest["action"], latest["regime"],
         float(latest["sl_price"]) if latest["action"] != "NO_TRADE" else None,
         float(latest["tp_price"]) if latest["action"] != "NO_TRADE" else None,
         risk_pct, ev=ev,
@@ -159,17 +147,48 @@ def main():
 
     try:
         result = execute_signal_with_logging(
-            exchange, engine, SYMBOL, "M15", latest["action"], latest["regime"],
+            exchange, engine, symbol, "M15", latest["action"], latest["regime"],
             entry_price=float(latest["close"]), sl_price=float(latest["sl_price"]),
             tp_price=float(latest["tp_price"]), risk_pct=risk_pct, equity=equity,
             exchange_spec=exchange_spec,
         )
         print(f"EXECUTED: qty={result['qty']}, trade_id={result['trade_id']}")
-        alert_trade_opened(SYMBOL, latest["action"], result["qty"], float(latest["close"]),
+        alert_trade_opened(symbol, latest["action"], result["qty"], float(latest["close"]),
                             float(latest["sl_price"]), float(latest["tp_price"]), risk_pct)
     except OrderRejected as e:
         print(f"Order rejected: {e}")
-        alert_error(f"{SYMBOL} order rejected: {e}")
+        alert_error(f"{symbol} order rejected: {e}")
+
+
+def main():
+    write_heartbeat()
+    engine = init_db(DB_PATH)
+
+    exchange = ccxt.binanceusdm({
+        "apiKey": os.getenv("BINANCE_TESTNET_API_KEY"),
+        "secret": os.getenv("BINANCE_TESTNET_API_SECRET"),
+        "enableRateLimit": True,
+    })
+    exchange.enable_demo_trading(True)
+    markets = exchange.load_markets()
+
+    # public data fetch doesn't need auth — one shared plain instance for all symbols
+    public_exchange = ccxt.binanceusdm({"enableRateLimit": True})
+    public_exchange.load_markets()
+
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}] cycle start "
+          f"({len(SYMBOLS)} symbol(s))")
+
+    for entry in SYMBOLS:
+        symbol = entry["symbol"]
+        try:
+            run_symbol_cycle(exchange, public_exchange, engine, markets, symbol,
+                             entry["config"], entry["base_risk_pct"])
+        except Exception as e:
+            # isolate: one symbol crashing must not stop the rest of the cycle
+            print(f"ERROR in {symbol} cycle:")
+            traceback.print_exc()
+            alert_error(f"{symbol} cycle error: {e}")
 
 
 if __name__ == "__main__":

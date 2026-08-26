@@ -7,7 +7,7 @@ what was attempted — critical for reconciliation after a crash (§19).
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.engine import Engine
 
 from src.data.db import signals, risk_decisions, orders, trades
@@ -73,6 +73,22 @@ def log_trade_open(engine: Engine, signal_id: str, symbol: str, entry_price: flo
             exit_time_utc=None, exit_price=None, exit_reason=None, net_pnl=None, r_multiple=None,
         ))
     return trade_id
+
+
+def recent_closed_r_multiples(engine: Engine, symbol: str) -> list[float]:
+    """Closed-trade r_multiples for ONE symbol, oldest→newest by exit time.
+
+    Per-symbol so the rolling-winrate risk guard reacts to that symbol's own
+    recent record — one symbol's losing streak must not throttle another's.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(trades.c.r_multiple)
+            .where(trades.c.symbol == symbol)
+            .where(trades.c.r_multiple.isnot(None))
+            .order_by(trades.c.exit_time_utc.asc())
+        ).fetchall()
+    return [row.r_multiple for row in rows]
 
 
 def log_trade_close(engine: Engine, trade_id: str, exit_price: float, exit_reason: str,

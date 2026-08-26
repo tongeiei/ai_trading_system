@@ -18,7 +18,7 @@ from src.features.engine import build_features
 from src.regime.rules import classify_regime
 from src.strategy.v0_rules import generate_v0_signals
 from src.labeling.triple_barrier import label_all_signals
-from src.backtest.costs import apply_costs, SLIPPAGE_PRICE_UNITS
+from src.backtest.costs import apply_costs, SLIPPAGE_BPS
 from src.backtest.significance import bootstrap_mean_test
 
 pd.set_option("display.width", 160)
@@ -73,7 +73,7 @@ for mult in [1, 2, 3]:
     from src.backtest.costs import slippage_cost_r
     costed_s = labeled.copy()
     costed_s["commission_r"] = costed_s.apply(lambda r: 2 * 0.0005 * r["close"] / r["sl_distance"], axis=1)
-    costed_s["slippage_r"] = costed_s.apply(lambda r: slippage_cost_r(r["sl_distance"], SLIPPAGE_PRICE_UNITS * mult), axis=1)
+    costed_s["slippage_r"] = costed_s.apply(lambda r: slippage_cost_r(r["sl_distance"], r["close"], SLIPPAGE_BPS * mult), axis=1)
     from src.backtest.costs import funding_cost_r
     costed_s["funding_r"] = costed_s.apply(
         lambda r: funding_cost_r(r["time_utc"], r["exit_time"], r["close"], r["action"], r["sl_distance"], funding), axis=1

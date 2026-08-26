@@ -14,7 +14,8 @@ subtract directly from the raw r_multiple triple_barrier.py produces.
 import pandas as pd
 
 TAKER_FEE = 0.0005          # from config/exchange_spec.yaml — re-read at call time in practice
-SLIPPAGE_PRICE_UNITS = 0.5  # conservative placeholder: 0.5 USD per side on BTC/USDT, see module docstring
+SLIPPAGE_BPS = 2.0          # slippage per side, in basis points of price (proportional,
+                            # so it scales correctly across symbols regardless of price level)
 
 
 def funding_cost_r(
@@ -50,9 +51,16 @@ def commission_cost_r(sl_distance: float, entry_price: float, taker_fee: float =
     return cost_price_units / sl_distance
 
 
-def slippage_cost_r(sl_distance: float, slippage_price_units: float = SLIPPAGE_PRICE_UNITS) -> float:
-    """Round-trip slippage (entry + exit) in R-multiples."""
-    return (2 * slippage_price_units) / sl_distance
+def slippage_cost_r(sl_distance: float, entry_price: float, slippage_bps: float = SLIPPAGE_BPS) -> float:
+    """Round-trip slippage (entry + exit) in R-multiples.
+
+    Slippage is proportional to price (a fixed number of basis points per
+    side), NOT a fixed USD amount — a fixed-USD model is wildly wrong across
+    symbols of different price levels (e.g. a 0.5 USD/side assumption is
+    ~0.001 bps on BTC but ~8000 bps on a $0.06 coin).
+    """
+    per_side = (slippage_bps / 10_000) * entry_price
+    return (2 * per_side) / sl_distance
 
 
 def apply_costs(labeled_trades: pd.DataFrame, funding_rates: pd.DataFrame, taker_fee: float = TAKER_FEE) -> pd.DataFrame:
@@ -63,7 +71,7 @@ def apply_costs(labeled_trades: pd.DataFrame, funding_rates: pd.DataFrame, taker
         lambda row: commission_cost_r(row["sl_distance"], row["close"], taker_fee), axis=1
     )
     df["slippage_r"] = df.apply(
-        lambda row: slippage_cost_r(row["sl_distance"]), axis=1
+        lambda row: slippage_cost_r(row["sl_distance"], row["close"]), axis=1
     )
     df["funding_r"] = df.apply(
         lambda row: funding_cost_r(

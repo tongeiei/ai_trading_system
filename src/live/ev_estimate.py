@@ -45,7 +45,7 @@ class EVEstimate:
 def estimate_ev(entry_price: float, sl_distance: float) -> EVEstimate:
     """entry_price/sl_distance from the current bar (v0_rules always computes
     sl_distance even for NO_TRADE rows, so this can be called for any bar)."""
-    cost_r = commission_cost_r(sl_distance, entry_price, TAKER_FEE) + slippage_cost_r(sl_distance)
+    cost_r = commission_cost_r(sl_distance, entry_price, TAKER_FEE) + slippage_cost_r(sl_distance, entry_price)
     ev_r = (HISTORICAL_WIN_RATE * HISTORICAL_AVG_WIN_R
             - (1 - HISTORICAL_WIN_RATE) * HISTORICAL_AVG_LOSS_R
             - cost_r)

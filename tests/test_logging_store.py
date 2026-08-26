@@ -56,3 +56,24 @@ def test_full_flow_writes_order_and_trade_rows(tmp_path):
         t = conn.execute(select(trades).where(trades.c.trade_id == trade_id)).fetchone()
     assert t.exit_reason == "TP"
     assert t.r_multiple == 0.5
+
+
+def test_recent_closed_r_multiples_filters_by_symbol_ordered(tmp_path):
+    from src.live.logging_store import recent_closed_r_multiples
+    engine = make_test_engine(tmp_path)
+
+    # ETH: two closed trades (should come back in exit-time order) + one still open
+    sid = log_signal(engine, "ETH/USDT:USDT", "M15", "LONG", "TREND", 2400.0, 2600.0, 0.01)
+    t1 = log_trade_open(engine, sid, "ETH/USDT:USDT", 2500.0, 0.05, 2400.0, 2600.0)
+    log_trade_close(engine, t1, 2600.0, "TP", net_pnl=5.0, r_multiple=2.0)
+    t2 = log_trade_open(engine, sid, "ETH/USDT:USDT", 2500.0, 0.05, 2400.0, 2600.0)
+    log_trade_close(engine, t2, 2400.0, "SL", net_pnl=-2.5, r_multiple=-1.0)
+    log_trade_open(engine, sid, "ETH/USDT:USDT", 2500.0, 0.05, 2400.0, 2600.0)  # open, excluded
+
+    # XRP: one closed trade — must NOT appear in ETH's history
+    sidx = log_signal(engine, "XRP/USDT:USDT", "M15", "SHORT", "TREND", 0.55, 0.45, 0.01)
+    tx = log_trade_open(engine, sidx, "XRP/USDT:USDT", 0.50, 100.0, 0.55, 0.45)
+    log_trade_close(engine, tx, 0.45, "TP", net_pnl=5.0, r_multiple=2.0)
+
+    assert recent_closed_r_multiples(engine, "ETH/USDT:USDT") == [2.0, -1.0]
+    assert recent_closed_r_multiples(engine, "XRP/USDT:USDT") == [2.0]
