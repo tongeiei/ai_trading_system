@@ -1,84 +1,88 @@
 # Strategy & Risk Specification
 
-Last updated: 2026-08-25. Describes what the system actually runs live, not
-the original XAU/MT5 plan (see PROJECT_PLAN.md for that era; [HANDOFF.md](HANDOFF.md)
-for the crypto-pivot context). Read [FINDINGS.md](FINDINGS.md) before changing
-any parameter below — most of these values are locked because an earlier
-config was already tried and rejected.
+อัปเดตล่าสุด: 2026-08-25 อธิบายสิ่งที่ระบบรันจริงบน live ไม่ใช่แผนเดิมยุค
+XAU/MT5 (ดู PROJECT_PLAN.md สำหรับยุคนั้น; [HANDOFF.md](HANDOFF.md) สำหรับ
+บริบทการปรับทิศทางมา crypto) อ่าน [FINDINGS.md](FINDINGS.md) ก่อนเปลี่ยน
+พารามิเตอร์ใดๆ ด้านล่าง — ค่าส่วนใหญ่ถูกล็อกไว้เพราะ config ก่อนหน้าเคยลอง
+แล้วถูกปฏิเสธ
 
-## 1. Scope
+## 1. ขอบเขต
 
-- **Symbol**: ETH/USDT:USDT only. BTC/SOL/BNB were backtested and rejected
-  (no edge).
-- **Timeframe**: M15 decisions, H1 used for trend confirmation. Signals are
-  generated once per M15 bar-close (`scripts/run_signal_cycle.py`, triggered
-  by `signal-cycle.timer`), never intrabar.
-- **Live config is locked**: `ADX_threshold=35`, `SL=2.5x ATR`, `TP=2x SL`
-  (`LOCKED_CONFIG` in [scripts/run_signal_cycle.py](../scripts/run_signal_cycle.py)).
-  Do not re-tune without a fresh, disjoint holdout.
+- **Symbol**: ETH/USDT:USDT เป็นตัวหลัก (risk 0.5%) + **XRP/USDT:USDT** เป็น
+  tier-2 candidate ที่กำลัง paper-trade (risk 0.25%) — ดู
+  [FINDINGS.md](FINDINGS.md) ส่วน "2nd-symbol search" BTC/SOL/BNB/DOGE/ADA/
+  LINK/LTC/AVAX ถูก backtest แล้วปฏิเสธในรอบต่างๆ (ไม่มี edge หรือเปราะเกินไป)
+- **Timeframe**: ตัดสินใจที่ M15, ใช้ H1 ยืนยันแนวโน้ม สร้าง signal ครั้งเดียว
+  ต่อการปิดแท่ง M15 (`scripts/run_signal_cycle.py`, ถูกเรียกโดย
+  `signal-cycle.timer`) ไม่มีการตัดสินใจกลางแท่ง
+- **Config บน live ถูกล็อกไว้**: `ADX_threshold=35`, `SL=2.5x ATR`, `TP=2x SL`
+  (ระบุต่อ symbol ใน `SYMBOLS` list ของ
+  [scripts/run_signal_cycle.py](../scripts/run_signal_cycle.py))
+  ห้าม tune ใหม่โดยไม่มี holdout ใหม่ที่แยกจากเดิมจริงๆ
 
-## 2. Regime classification
+## 2. การจำแนก Regime
 
-[src/regime/rules.py](../src/regime/rules.py) — rule-based, 2 live classes.
+[src/regime/rules.py](../src/regime/rules.py) — ใช้กฎตายตัว มี 2 class บน live
 
-| Regime | Condition |
+| Regime | เงื่อนไข |
 |---|---|
-| `TREND` | H1 ADX(14) > `adx_threshold` **and** `\|EMA50-EMA200\|/ATR_H1` > 0.5 |
-| `RANGE` | everything else |
+| `TREND` | H1 ADX(14) > `adx_threshold` **และ** `\|EMA50-EMA200\|/ATR_H1` > 0.5 |
+| `RANGE` | นอกเหนือจากนั้น |
 
-- Defaults: `ADX_TREND_THRESHOLD = 22.0`, `TREND_STRENGTH_THRESHOLD = 0.5`.
-  The live-locked config overrides ADX to **35** (stricter than the module
-  default) — see `LOCKED_CONFIG` above.
-- `NEWS_BLACKOUT` is a defined hook in the strategy signatures but is a
-  no-op for crypto V1 — no economic-calendar blackout list exists yet
-  (planned for a later phase).
-- `vol_multiplier()` is a separate, continuous 0.40–1.0 risk multiplier
-  derived from ATR percentile (not a discrete "HIGH_VOLATILITY" class, to
-  avoid cliff behavior). Not currently wired into the live risk multiplier
-  chain — the live multiplier comes from the win-rate guard (§4) only.
+- ค่า default: `ADX_TREND_THRESHOLD = 22.0`, `TREND_STRENGTH_THRESHOLD = 0.5`
+  Config ที่ล็อกไว้บน live override ADX เป็น **35** (เข้มกว่าค่า default ของ
+  module) — ดู `LOCKED_CONFIG` ด้านบน
+- `NEWS_BLACKOUT` เป็น hook ที่นิยามไว้ใน signature ของกลยุทธ์ แต่ยังเป็น
+  no-op สำหรับ crypto V1 — ยังไม่มี blacklist ปฏิทินเศรษฐกิจ (วางแผนไว้สำหรับ
+  phase ถัดไป)
+- `vol_multiplier()` เป็น risk multiplier แบบต่อเนื่อง 0.40–1.0 แยกต่างหาก
+  คำนวณจาก ATR percentile (ไม่ใช่ class แบบ "HIGH_VOLATILITY" ที่กระโดดชัด
+  เพื่อเลี่ยง cliff behavior) ปัจจุบันยังไม่ต่อเข้ากับ risk multiplier chain
+  บน live — ตัว multiplier บน live มาจาก win-rate guard เท่านั้น (§4)
 
-## 3. Entry strategies
+## 3. กลยุทธ์การเข้าไม้
 
-All three share one output schema — one row per M15 bar with
-`action ∈ {LONG, SHORT, NO_TRADE}` and `sl_price`/`tp_price` when acting —
-so they're swappable in `scripts/compare_v0_strategies.py`. Only **V0
-EMA-pullback** is used live; the other two are kept for reference.
+ทั้ง 3 กลยุทธ์ใช้ output schema เดียวกัน — หนึ่งแถวต่อแท่ง M15 พร้อม
+`action ∈ {LONG, SHORT, NO_TRADE}` และ `sl_price`/`tp_price` เมื่อมีการเข้าไม้
+จึงสลับใช้กันได้ใน `scripts/compare_v0_strategies.py` มีแค่ **V0
+EMA-pullback** ที่ใช้บน live อีก 2 ตัวเก็บไว้อ้างอิงเท่านั้น
 
 ### 3.1 V0 EMA-pullback (LIVE) — [src/strategy/v0_rules.py](../src/strategy/v0_rules.py)
 
-Trend-following pullback entry, active only in `TREND` regime.
+Trend-following แบบ pullback entry ทำงานเฉพาะ regime `TREND`
 
-- **Long setup**: `TREND` regime, H1 trend bullish (`f03_h1_trend_atr > 0`),
-  and price pulls back to EMA20 then closes back above it (`dist_ema20`
-  crosses from ≤0 to >0 on this bar).
-- **Short setup**: mirror — H1 bearish, `dist_ema20` crosses from ≥0 to <0.
-- **Quality filters** (applied after the base setup): ATR percentile must
-  be within `[atr_pct_min, atr_pct_max]` (default no-op, `[0, 1]`), and
-  candle body ratio must be ≥ `min_body_ratio` (default no-op, `0`) — avoids
-  dead/chaotic volatility and indecisive candles.
-- **Stops**: `sl_distance = clip(ATR * sl_atr_mult, lower=ATR*0.8, upper=ATR*max(3.0, sl_atr_mult*1.2))`.
-  Module defaults `SL_ATR_MULT=1.5`, `TP_R_MULT=2.0`; live-locked config uses
-  `SL=2.5x ATR` instead (`TP_R_MULT` stays at module default, i.e. TP = 2R).
-- Rows where features aren't warmed up yet (`f08_atr_percentile` is NaN)
-  are forced to `NO_TRADE`.
+- **Long setup**: regime `TREND`, แนวโน้ม H1 เป็นขาขึ้น (`f03_h1_trend_atr > 0`),
+  ราคาย่อกลับมาที่ EMA20 แล้วปิดกลับขึ้นเหนือมัน (`dist_ema20` ข้ามจาก ≤0
+  เป็น >0 ในแท่งนี้)
+- **Short setup**: กลับด้าน — H1 เป็นขาลง, `dist_ema20` ข้ามจาก ≥0 เป็น <0
+- **ตัวกรองคุณภาพ** (ใช้หลัง setup พื้นฐาน): ATR percentile ต้องอยู่ใน
+  `[atr_pct_min, atr_pct_max]` (ค่า default คือ no-op, `[0, 1]`), และอัตราส่วน
+  body ของแท่งเทียนต้อง ≥ `min_body_ratio` (ค่า default คือ no-op, `0`) —
+  หลีกเลี่ยงความผันผวนที่ตายด้าน/สับสน และแท่งเทียนที่ไม่เด็ดขาด
+- **Stop**: `sl_distance = clip(ATR * sl_atr_mult, lower=ATR*0.8, upper=ATR*max(3.0, sl_atr_mult*1.2))`
+  ค่า default ของ module คือ `SL_ATR_MULT=1.5`, `TP_R_MULT=2.0`; config ที่
+  ล็อกบน live ใช้ `SL=2.5x ATR` แทน (`TP_R_MULT` คงค่า default ของ module
+  คือ TP = 2R)
+- แถวที่ feature ยัง warm-up ไม่เสร็จ (`f08_atr_percentile` เป็น NaN) จะถูก
+  บังคับเป็น `NO_TRADE`
 
-### 3.2 Breakout (rejected, reference only) — [src/strategy/breakout.py](../src/strategy/breakout.py)
+### 3.2 Breakout (ถูกปฏิเสธ, เก็บไว้อ้างอิง) — [src/strategy/breakout.py](../src/strategy/breakout.py)
 
-Donchian(20) channel breakout, requires H1 ADX > 20. Regime filter
-deliberately dropped (breakout logic implies its own trend confirmation).
-Channel is computed on bars strictly before the signal bar (`shift(1)`) so
-the breakout bar can't leak into its own trigger level.
+Breakout ของ Donchian(20) channel ต้องการ H1 ADX > 20 ตั้งใจตัด regime
+filter ออก (ตรรกะ breakout มีการยืนยันแนวโน้มในตัวอยู่แล้ว) คำนวณ channel
+จากแท่งก่อนหน้าแท่ง signal อย่างเคร่งครัด (`shift(1)`) เพื่อไม่ให้แท่งที่
+breakout leak เข้าไปเป็น trigger level ของตัวเอง
 
-### 3.3 Mean-reversion (rejected, reference only) — [src/strategy/mean_reversion.py](../src/strategy/mean_reversion.py)
+### 3.3 Mean-reversion (ถูกปฏิเสธ, เก็บไว้อ้างอิง) — [src/strategy/mean_reversion.py](../src/strategy/mean_reversion.py)
 
-Fades `dist_ema20/ATR` beyond ±`entry_z` (default 2.0), `RANGE` regime only
-— opposite thesis to the other two: bets on a snap-back to the mean rather
-than continuation. Smaller `TP_R_MULT` (1.5 vs 2.0) since the target is the
-mean, not a runner.
+ฟาดสวน `dist_ema20/ATR` ที่เกิน ±`entry_z` (default 2.0), ทำงานเฉพาะ regime
+`RANGE` — เป็นสมมติฐานตรงข้ามกับอีก 2 ตัว: เดิมพันว่าราคาจะดีดกลับเข้าหา
+ค่าเฉลี่ยแทนที่จะไปต่อ `TP_R_MULT` เล็กกว่า (1.5 เทียบกับ 2.0) เพราะเป้าหมาย
+คือค่าเฉลี่ย ไม่ใช่การวิ่งยาว
 
-## 4. Risk sizing and guards
+## 4. Risk Sizing และ Guard
 
-### 4.1 Position sizing — [src/risk/sizing.py](../src/risk/sizing.py)
+### 4.1 Position Sizing — [src/risk/sizing.py](../src/risk/sizing.py)
 
 `compute_position_size(equity, risk_pct, entry_price, sl_price, spec)`:
 
@@ -87,79 +91,81 @@ risk_amount = equity * risk_pct
 qty = floor((risk_amount / |entry_price - sl_price|) / stepSize) * stepSize
 ```
 
-- Always rounds **down** to `stepSize` — rounding up would silently exceed
-  the intended risk.
-- Raises `PositionRejected` (caller must not round up to compensate) if
-  `qty < amount_min` or `notional < min_notional` — account too small for
-  this `risk_pct`/SL distance at the current price.
-- `risk_pct` is validated to `(0, 0.05]` as a sanity bound.
-- No lot/tick-value conversion needed (unlike the original MT5 plan) —
-  crypto sizing is direct risk-amount ÷ SL-distance.
+- ปัดเศษ**ลง**เป็น `stepSize` เสมอ — ถ้าปัดขึ้นจะทำให้ risk เกินที่ตั้งใจไว้
+  โดยไม่รู้ตัว
+- โยน `PositionRejected` (ผู้เรียกห้ามปัดขึ้นเพื่อชดเชย) ถ้า `qty < amount_min`
+  หรือ `notional < min_notional` — บัญชีเล็กเกินไปสำหรับ `risk_pct`/ระยะ SL นี้
+  ที่ราคาปัจจุบัน
+- `risk_pct` ถูกตรวจสอบให้อยู่ใน `(0, 0.05]` เป็นขอบเขตความสมเหตุสมผล
+- ไม่ต้องแปลง lot/tick-value (ต่างจากแผน MT5 เดิม) — การคำนวณขนาดของ crypto
+  เป็นการหารตรงๆ ระหว่าง risk-amount ÷ ระยะ SL
 
-### 4.2 Base risk and the win-rate guard
+### 4.2 Base Risk และ Win-rate Guard
 
-- **Base risk**: `BASE_RISK_PCT = 0.005` (0.5%) in
-  [scripts/run_signal_cycle.py](../scripts/run_signal_cycle.py). Lowered
-  from the originally-planned 1–2% after walk-forward testing showed the
-  ETH edge is real but **unstable**: 8/12 quarterly folds positive, only
-  2/12 individually statistically significant, and 2023 H2 was
-  significantly negative (a whipsaw/high-vol regime the single
-  train/holdout split had missed).
-- **Rolling win-rate guard** — `rolling_winrate_risk_multiplier()` in
-  [src/live/guards.py](../src/live/guards.py): looks at the last
-  `WINRATE_WINDOW=20` closed trades' net R-multiples; if win rate over that
-  tail drops below `WINRATE_THRESHOLD=0.30`, risk is halved
-  (`reduced_multiplier=0.5`) until it recovers. Returns 1.0 (no reduction)
-  if fewer than 20 trades exist — too noisy to act on with a smaller
-  sample. Modeled directly on the 2023 H2 failure mode (win rate ~27%,
-  both LONG and SHORT losing together) — triggers earlier than a
-  drawdown/daily-loss threshold would.
-- Effective live risk per trade: `BASE_RISK_PCT * risk_multiplier`, i.e.
-  0.5% normally, 0.25% when the guard is active.
+- **Base risk**: กำหนดต่อ symbol ผ่าน `base_risk_pct` ใน `SYMBOLS` list ของ
+  [scripts/run_signal_cycle.py](../scripts/run_signal_cycle.py) — ETH ที่
+  **0.5%**, XRP ที่ **0.25%** ค่า ETH ถูกลดจากแผนเดิม 1–2% หลัง walk-forward
+  testing แสดงว่า edge ของ ETH เป็นของจริงแต่**ไม่เสถียร**: 8/12 quarterly
+  fold เป็นบวก มีแค่ 2/12 ที่ significant ทางสถิติจริงๆ และ 2023 H2 ติดลบ
+  อย่าง significant (regime whipsaw/vol สูงที่ train/holdout split เดียว
+  มองไม่เห็น)
+- **Rolling win-rate guard** — `rolling_winrate_risk_multiplier()` ใน
+  [src/live/guards.py](../src/live/guards.py): ดู net R-multiple ของ 20
+  เทรดที่ปิดล่าสุด (`WINRATE_WINDOW=20`) **แยกตาม symbol** ผ่าน
+  `recent_closed_r_multiples()` — ถ้า win rate ในช่วงนั้นต่ำกว่า
+  `WINRATE_THRESHOLD=0.30` risk จะถูกลดครึ่งหนึ่ง (`reduced_multiplier=0.5`)
+  จนกว่าจะฟื้น คืนค่า 1.0 (ไม่ลด) ถ้ามีเทรดน้อยกว่า 20 ไม้ — noise เยอะเกินไป
+  ที่จะตัดสินใจจาก sample เล็กขนาดนั้น จำลองมาจาก failure mode ของ 2023 H2
+  โดยตรง (win rate ~27%, ทั้ง LONG และ SHORT ขาดทุนพร้อมกัน) — trigger เร็ว
+  กว่า threshold drawdown/daily-loss
+- Risk จริงต่อเทรดบน live: `base_risk_pct * risk_multiplier` เช่น ETH ปกติ
+  0.5%, เหลือ 0.25% เมื่อ guard ทำงาน
 
-### 4.3 Pre-trade guards — [src/live/guards.py](../src/live/guards.py)
+### 4.3 Guard ก่อนเข้าไม้ — [src/live/guards.py](../src/live/guards.py)
 
-Pure functions, no exchange calls, all fail closed:
+ฟังก์ชัน pure ไม่มีการเรียก exchange, ทุกตัว fail closed:
 
-| Guard | Blocks trading when | Default threshold |
+| Guard | บล็อกการเทรดเมื่อ | Threshold เริ่มต้น |
 |---|---|---|
-| `spread_guard` | current spread > `max_ratio` × median spread | 3.0x |
-| `stale_data_guard` | last tick older than `max_age_sec` | 30s |
-| `heartbeat_guard` | signal-cycle heartbeat older than `max_age_sec` | 60s |
-| `rolling_winrate_risk_multiplier` | see §4.2 | win rate < 30% over last 20 trades |
+| `spread_guard` | spread ปัจจุบัน > `max_ratio` × spread มัธยฐาน | 3.0x |
+| `stale_data_guard` | tick ล่าสุดเก่ากว่า `max_age_sec` | 30 วิ |
+| `heartbeat_guard` | heartbeat ของ signal-cycle เก่ากว่า `max_age_sec` | 60 วิ |
+| `rolling_winrate_risk_multiplier` | ดู §4.2 | win rate < 30% ใน 20 เทรดล่าสุด (ต่อ symbol) |
 
-`retry_with_limit()` caps order-placement retries at 2 (`RetryLimitExceeded`
-raised after that) — never retries unboundedly, to avoid turning a
-transient error into a duplicate/runaway order.
+`retry_with_limit()` จำกัดการ retry การวางไม้ไว้ที่ 2 ครั้ง (โยน
+`RetryLimitExceeded` หลังจากนั้น) — ไม่ retry ไม่จำกัดเด็ดขาด เพื่อไม่ให้
+error ชั่วคราวกลายเป็นไม้ซ้ำ/วิ่งเถื่อน
 
-### 4.4 EV gate
+### 4.4 EV Gate
 
-`src/live/ev_estimate.py` gates entries using **historical backtest base
-rates**, not a model prediction. This was already tried with LightGBM
-(`src/models/`) and rejected at the P5 gate — holdout AUC ~0.497,
-indistinguishable from noise. `estimate_ev` is explicitly labeled
-non-ML everywhere it's surfaced (code comments, dashboard) to prevent this
-from being reintroduced as an "AI probability" display.
+`src/live/ev_estimate.py` กรองการเข้าไม้ด้วย **base rate จาก backtest
+ประวัติศาสตร์** ไม่ใช่การทำนายจาก model เคยลอง LightGBM มาแล้ว
+(`src/models/`) และถูกปฏิเสธที่ gate P5 — holdout AUC ~0.497 แยกไม่ออกจาก
+noise `estimate_ev` ถูก label ว่าไม่ใช่ ML อย่างชัดเจนทุกที่ที่แสดงผล
+(comment ในโค้ด, dashboard) เพื่อกันไม่ให้กลับมาใช้เป็น "AI probability"
+display อีก
 
-### 4.5 Position lifecycle safety
+### 4.5 ความปลอดภัยของวงจรชีวิต Position
 
-- `src/live/reconcile.py` — orphan-position detection; the signal cycle
-  refuses to open a new trade if a position with no matching SL exists.
-- `src/live/position_timeout.py` — forces a close after 12h, and detects
-  organic SL/TP-fired exits (ccxt doesn't natively surface exchange-native
-  algo-order fills, see `order_executor.fetch_open_algo_orders`).
+- `src/live/reconcile.py` — ตรวจจับ position กำพร้า; signal cycle ปฏิเสธ
+  การเปิดไม้ใหม่ถ้ามี position ที่ไม่มี SL คู่กันอยู่
+- `src/live/position_timeout.py` — บังคับปิดหลัง 12 ชม. และตรวจจับ SL/TP ที่
+  ยิงเองบน exchange (ccxt ไม่เห็น fill ของ algo-order แบบ native โดยตรง ดู
+  `order_executor.fetch_open_algo_orders`)
 
-## 5. Known limitations (do not treat as solved)
+## 5. ข้อจำกัดที่รู้อยู่แล้ว (อย่าคิดว่าแก้แล้ว)
 
-- Edge is statistically real but unstable across regimes (§4.2) — do not
-  raise `BASE_RISK_PCT` without a fresh disjoint holdout confirming
-  stability.
-- No trade has occurred live/paper yet as of this writing; ETH has stayed
-  in `RANGE` regime since automation started — not itself evidence of a
-  bug (see [HANDOFF.md](HANDOFF.md) known-gaps section for the probability
-  analysis).
-- All live activity so far is on demo/testnet trading — real spread/slippage
-  are still backtest cost-model assumptions, not measured against mainnet
-  orderbook depth.
-- `vol_multiplier()` (§2) exists but is not currently wired into the live
-  risk-multiplier chain.
+- Edge เป็นของจริงทางสถิติแต่ไม่เสถียรข้าม regime (§4.2) — ห้ามขึ้น
+  `base_risk_pct` โดยไม่มี holdout ใหม่ที่แยกจากเดิมมายืนยันความเสถียร
+- ETH ยังไม่มีเทรดเกิดขึ้นบน live/paper นับจากที่เขียนไฟล์นี้ — ETH อยู่ใน
+  regime `RANGE` ต่อเนื่องตั้งแต่ระบบอัตโนมัติเริ่มทำงาน — ไม่ใช่หลักฐานของ
+  bug ในตัวมันเอง (ดูส่วน known-gaps ใน [HANDOFF.md](HANDOFF.md) สำหรับการ
+  วิเคราะห์ความน่าจะเป็น)
+- กิจกรรม live ทั้งหมดตอนนี้อยู่บน demo/testnet trading — spread/slippage
+  จริงยังเป็นสมมติฐานจาก cost model ของ backtest ยังไม่ได้วัดกับความลึกของ
+  orderbook จริงบน mainnet
+- `vol_multiplier()` (§2) มีอยู่แต่ยังไม่ได้ต่อเข้ากับ risk-multiplier chain
+  บน live
+- Slippage ใน `src/backtest/costs.py` แก้เป็นสัดส่วนราคาแล้ว (`SLIPPAGE_BPS`,
+  เดิมเป็น USD คงที่ที่ทำให้ coin ราคาต่ำได้ค่าเพี้ยน) ETH edge ถูก
+  re-confirm แล้วว่าไม่เปลี่ยน — ดู FINDINGS.md

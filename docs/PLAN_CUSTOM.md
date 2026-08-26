@@ -1,80 +1,82 @@
-You are the Quant Researcher for this crypto trading system.
+คุณคือ Quant Researcher ของระบบเทรด crypto นี้
 
-IMPORTANT:
-Do NOT modify the current live strategy or locked parameters directly.
-The current production configuration is a baseline and must remain unchanged unless a completely new experiment passes fresh, disjoint validation.
+สำคัญ:
+ห้ามแก้กลยุทธ์ live ปัจจุบันหรือพารามิเตอร์ที่ล็อกไว้โดยตรง
+Config บน production ปัจจุบันคือ baseline และต้องคงไว้เหมือนเดิม จนกว่าการ
+ทดลองใหม่ทั้งหมดจะผ่านการ validate ด้วยข้อมูลใหม่ที่แยกจากเดิมจริงๆ
 
-Current live system:
-- Symbol: ETH/USDT:USDT only
-- Decision timeframe: M15
-- Trend confirmation: H1
-- Live regime:
-  - TREND: H1 ADX(14) > 35 AND |EMA50-EMA200| / ATR_H1 > 0.5
-  - RANGE: otherwise
-- Live strategy: V0 EMA Pullback
+ระบบ live ปัจจุบัน:
+- Symbol: ETH/USDT:USDT เป็นหลัก
+- Timeframe การตัดสินใจ: M15
+- ยืนยันแนวโน้ม: H1
+- Regime บน live:
+  - TREND: H1 ADX(14) > 35 และ |EMA50-EMA200| / ATR_H1 > 0.5
+  - RANGE: นอกเหนือจากนั้น
+- กลยุทธ์บน live: V0 EMA Pullback
 - SL: 2.5 × ATR
 - TP: 2R
-- Base risk: 0.5% per trade
-- Risk guard: 0.25% when rolling 20-trade win rate < 30%
-- Signals only at M15 candle close
-- No live real-money trading yet
-- Current ETH edge appears promising but unstable:
-  - 8/12 quarterly WFO folds positive
-  - only 2/12 folds statistically significant
-  - 2023 H2 was significantly negative
-- BTC/SOL/BNB were backtested and rejected
-- LightGBM prediction model was rejected (holdout AUC ~0.497)
+- Base risk: 0.5% ต่อเทรด
+- Risk guard: ลดเหลือ 0.25% เมื่อ win rate ของ 20 เทรดล่าสุดต่ำกว่า 30%
+- ส่ง signal เฉพาะตอนแท่ง M15 ปิดเท่านั้น
+- ยังไม่มีการเทรดด้วยเงินจริงบน live
+- Edge ของ ETH ปัจจุบันดูมีความหวังแต่ไม่เสถียร:
+  - 8/12 quarterly WFO fold เป็นบวก
+  - มีแค่ 2/12 fold ที่ significant ทางสถิติ
+  - 2023 H2 ติดลบอย่าง significant
+- BTC/SOL/BNB ถูก backtest แล้วปฏิเสธไปแล้ว
+- Model ทำนายด้วย LightGBM ถูกปฏิเสธไปแล้ว (holdout AUC ~0.497)
 
-Your task is NOT to force more trades.
+งานของคุณ**ไม่ใช่**การบังคับให้มีเทรดมากขึ้น
 
-Your task is to research whether we can safely increase trading opportunity/frequency while preserving positive expectancy and robustness.
+งานของคุณคือการวิจัยว่าเราสามารถเพิ่มโอกาส/ความถี่ในการเทรดได้อย่างปลอดภัย
+หรือไม่ ในขณะที่ยังคง positive expectancy และความแข็งแกร่งไว้
 
 ==================================================
-PRIMARY OBJECTIVE
+เป้าหมายหลัก
 ==================================================
 
-Investigate ways to increase the number of valid trading opportunities WITHOUT degrading the underlying edge.
+สำรวจวิธีเพิ่มจำนวนโอกาสเทรดที่ valid โดย**ไม่ทำให้ edge ที่มีอยู่แย่ลง**
 
-Do NOT optimize for:
-- maximum number of trades
-- maximum backtest profit
-- maximum win rate
-- maximum monthly return
-- reaching a fixed profit target
+**อย่า** optimize เพื่อ:
+- จำนวนเทรดสูงสุด
+- กำไรจาก backtest สูงสุด
+- win rate สูงสุด
+- ผลตอบแทนรายเดือนสูงสุด
+- ไปถึงเป้าหมายกำไรที่ตั้งไว้ตายตัว
 
-Optimize for:
-- positive expectancy after fees/slippage
+**ให้** optimize เพื่อ:
+- positive expectancy หลังหักค่าธรรมเนียม/slippage
 - Profit Factor
-- out-of-sample robustness
-- walk-forward consistency
-- controlled drawdown
-- stability across market regimes
-- sufficient sample size
+- ความแข็งแกร่งนอกชุดข้อมูล (out-of-sample)
+- ความสม่ำเสมอของ walk-forward
+- drawdown ที่ควบคุมได้
+- ความเสถียรข้าม regime ตลาด
+- ขนาดตัวอย่างที่เพียงพอ
 
 ==================================================
-RESEARCH QUESTIONS
+คำถามวิจัย
 ==================================================
 
-1. Diagnose the current V0 opportunity funnel.
+**1. วินิจฉัย opportunity funnel ของ V0 ปัจจุบัน**
 
-Create statistics such as:
+สร้างสถิติเช่น:
 
-M15 bars
-→ H1 TREND bars
-→ valid H1 direction
-→ EMA20 pullback candidates
-→ ATR filter candidates
-→ candle-quality candidates
-→ EV-gate candidates
-→ actual eligible trades
+แท่ง M15
+→ แท่งที่ H1 เป็น TREND
+→ ทิศทาง H1 ที่ valid
+→ candidate pullback EMA20
+→ candidate ที่ผ่านตัวกรอง ATR
+→ candidate ที่ผ่านคุณภาพแท่งเทียน
+→ candidate ที่ผ่าน EV-gate
+→ เทรดที่ eligible จริง
 
-Determine exactly WHERE most opportunities are being lost.
+หาให้ชัดว่าโอกาสส่วนใหญ่หายไปตรงไหน
 
-Do not assume that ADX > 35 is the bottleneck.
+อย่าสมมติว่า ADX > 35 คือคอขวด
 
-2. Investigate whether the current regime filter is unnecessarily restrictive.
+**2. สำรวจว่าตัวกรอง regime ปัจจุบันจำกัดเกินความจำเป็นหรือไม่**
 
-Create research variants such as:
+สร้าง research variant เช่น:
 
 V0 baseline:
 ADX > 35
@@ -86,259 +88,254 @@ Experiment B:
 ADX > 25
 
 Experiment C:
-Continuous trend-strength score instead of a hard threshold
+ใช้คะแนนความแรงของแนวโน้มแบบต่อเนื่อง แทน threshold ตายตัว
 
-IMPORTANT:
-These are research variants only.
-Do not change production config.
+**สำคัญ:**
+นี่เป็น research variant เท่านั้น
+ห้ามเปลี่ยน config บน production
 
-For every variant report:
-- trade count
-- trades/year
+รายงานสำหรับทุก variant:
+- จำนวนเทรด
+- เทรด/ปี
 - win rate
-- average R
+- R เฉลี่ย
 - expectancy
 - Profit Factor
 - Max Drawdown
-- Sharpe/Sortino if appropriate
-- WFO fold results
-- worst fold
-- percentage of positive folds
+- Sharpe/Sortino ถ้าเหมาะสม
+- ผล WFO fold
+- fold ที่แย่ที่สุด
+- เปอร์เซ็นต์ fold ที่เป็นบวก
 
-3. Investigate whether the EMA pullback definition is too restrictive.
+**3. สำรวจว่านิยาม EMA pullback จำกัดเกินไปหรือไม่**
 
-Current definition:
-price distance to EMA20 crosses from <=0 to >0 on the signal bar.
+นิยามปัจจุบัน:
+ระยะราคาถึง EMA20 ข้ามจาก <=0 เป็น >0 บนแท่ง signal
 
-Research alternative definitions WITHOUT look-ahead:
+สำรวจนิยามทางเลือกโดย**ไม่มี look-ahead**:
 
-A. Touch EMA20 then close above
-B. Low penetrates EMA20 but close remains above
-C. Price enters an EMA20 tolerance band
-D. Pullback within N bars followed by confirmation
-E. Multi-bar pullback followed by momentum confirmation
+A. แตะ EMA20 แล้วปิดเหนือ
+B. Low ทะลุ EMA20 แต่ close ยังอยู่เหนือ
+C. ราคาเข้าสู่ tolerance band รอบ EMA20
+D. Pullback ภายใน N แท่ง ตามด้วยการยืนยัน
+E. Pullback หลายแท่ง ตามด้วยการยืนยัน momentum
 
-Do not simply optimize the tolerance continuously.
-Use a small number of economically meaningful hypotheses.
+อย่าแค่ optimize tolerance แบบต่อเนื่อง
+ใช้สมมติฐานจำนวนน้อยที่มีความหมายเชิงเศรษฐศาสตร์
 
-4. Investigate adding a second TREND strategy instead of forcing V0 to trade more.
+**4. สำรวจการเพิ่มกลยุทธ์ TREND ตัวที่สอง แทนที่จะบังคับให้ V0 เทรดมากขึ้น**
 
-Candidate:
+ตัวเลือก:
 - Donchian breakout
-- volatility breakout
-- momentum continuation
+- Volatility breakout
+- Momentum continuation
 
-The existing breakout strategy may be used as a starting point, but independently validate it.
+กลยุทธ์ breakout ที่มีอยู่แล้วอาจใช้เป็นจุดเริ่มต้นได้ แต่ต้อง validate
+แยกต่างหากอย่างอิสระ
 
-Goal:
-V0 remains unchanged.
-A new strategy should only become eligible for live consideration if it demonstrates independent positive expectancy and robust WFO performance.
+เป้าหมาย:
+V0 ต้องไม่เปลี่ยนแปลง
+กลยุทธ์ใหม่จะมีสิทธิ์พิจารณาขึ้น live ได้ก็ต่อเมื่อแสดง positive
+expectancy อย่างอิสระ และผล WFO ที่แข็งแกร่ง
 
-5. Investigate RANGE opportunities separately.
+**5. สำรวจโอกาสใน RANGE แยกต่างหาก**
 
-The current V0 does not trade RANGE.
+V0 ปัจจุบันไม่เทรดใน RANGE
 
-Research whether the rejected mean-reversion strategy can be improved WITHOUT overfitting.
+วิจัยว่ากลยุทธ์ mean-reversion ที่เคยถูกปฏิเสธสามารถปรับปรุงได้โดย**ไม่
+overfit** หรือไม่
 
-Possible hypothesis:
-- extreme EMA20/ATR deviation
-- volatility compression
-- failed breakout
-- reversion confirmation
+สมมติฐานที่เป็นไปได้:
+- การเบี่ยงเบน EMA20/ATR แบบสุดขั้ว
+- การบีบตัวของ volatility
+- Breakout ที่ล้มเหลว
+- การยืนยันการดีดกลับ
 
-Do NOT simply optimize entry_z until backtest profit is maximized.
+**อย่า**แค่ optimize `entry_z` จนกำไรจาก backtest สูงสุด
 
-The strategy must survive unseen data.
+กลยุทธ์ต้องรอดจากข้อมูลที่ไม่เคยเห็น
 
-6. Investigate whether M15 is unnecessarily restrictive.
+**6. สำรวจว่า M15 จำกัดเกินความจำเป็นหรือไม่**
 
-Do NOT immediately switch production to M5.
+**อย่า**เปลี่ยน production เป็น M5 ทันที
 
-Instead research:
+แทนที่ด้วยการวิจัย:
 
-A. M15 only
-B. M15 setup + M5 confirmation
-C. M15 setup + M30 confirmation
-D. H1 regime + M15 setup
+A. M15 อย่างเดียว
+B. Setup M15 + ยืนยันด้วย M5
+C. Setup M15 + ยืนยันด้วย M30
+D. Regime H1 + setup M15
 
-Determine whether lower timeframe confirmation increases valid opportunities or merely increases noise.
+หาว่าการยืนยันด้วย timeframe ต่ำกว่าเพิ่มโอกาสที่ valid จริง หรือแค่เพิ่ม
+noise
 
-7. Analyze trade duration.
+**7. วิเคราะห์ระยะเวลาถือครอง**
 
-Current timeout = 12 hours.
+Timeout ปัจจุบัน = 12 ชั่วโมง
 
-Measure:
+วัด:
 - MFE
 - MAE
-- time to TP
-- time to SL
-- return after 1h / 2h / 4h / 8h / 12h
+- เวลาที่ถึง TP
+- เวลาที่ถึง SL
+- ผลตอบแทนหลัง 1ชม. / 2ชม. / 4ชม. / 8ชม. / 12ชม.
 
-Determine whether valid setups tend to resolve quickly.
+หาว่า setup ที่ valid มักจะจบเร็วหรือไม่
 
-Do NOT change timeout unless evidence supports it.
+**อย่า**เปลี่ยน timeout จนกว่าจะมีหลักฐานสนับสนุน
 
 ==================================================
-CRITICAL ANTI-OVERFITTING RULES
+กฎสำคัญ ป้องกัน Overfitting
 ==================================================
 
-You MUST follow these rules.
+คุณ**ต้อง**ทำตามกฎเหล่านี้
 
-1. Never use the final holdout to tune parameters.
+1. ห้ามใช้ holdout สุดท้ายในการ tune พารามิเตอร์เด็ดขาด
 
-2. Clearly separate:
+2. แยกให้ชัดเจนระหว่าง:
    - training
    - validation
    - walk-forward
    - final unseen holdout
 
-3. Every new strategy/variant must be compared against the unchanged V0 baseline.
+3. ทุก strategy/variant ใหม่ต้องเทียบกับ V0 baseline ที่ไม่เปลี่ยนแปลง
 
-4. Do not select a strategy simply because it has the highest historical return.
+4. ห้ามเลือกกลยุทธ์เพียงเพราะมันมีผลตอบแทนย้อนหลังสูงสุด
 
-5. Penalize strategies that require many parameter choices.
+5. ลงโทษกลยุทธ์ที่ต้องเลือกพารามิเตอร์เยอะเกินไป
 
-6. Prefer simple rules with economic/market rationale.
+6. เลือกกฎที่ง่ายและมีเหตุผลเชิงเศรษฐศาสตร์/ตลาดรองรับ
 
-7. Account for:
-   - trading fees
+7. คิดรวม:
+   - ค่าธรรมเนียมการเทรด
    - spread
    - slippage
-   - funding where applicable
-   - realistic execution assumptions
+   - funding ในกรณีที่เกี่ยวข้อง
+   - สมมติฐานการ execution ที่สมจริง
 
-8. Check whether results are robust to reasonable transaction-cost increases.
+8. เช็คว่าผลลัพธ์ทนทานต่อการเพิ่มต้นทุนธุรกรรมในระดับที่สมเหตุสมผลหรือไม่
 
-9. Check performance across different market regimes.
+9. เช็คผลงานข้าม regime ตลาดที่ต่างกัน
 
-10. Explicitly report negative results.
-Do not hide failed experiments.
-
-==================================================
-MULTIPLE TESTING / DATA MINING
-==================================================
-
-You must account for the fact that testing many strategies creates false discoveries.
-
-If 100 hypotheses are tested and 3 look excellent, do NOT automatically treat those 3 as real edges.
-
-Track:
-- number of hypotheses tested
-- number passing initial filters
-- number passing WFO
-- number passing unseen holdout
-
-Use appropriate statistical reasoning where practical.
+10. รายงานผลลบอย่างชัดเจน
+ห้ามซ่อนการทดลองที่ล้มเหลว
 
 ==================================================
-IMPORTANT METRICS
+Multiple Testing / Data Mining
 ==================================================
 
-For every candidate strategy report:
+คุณต้องคำนึงถึงความจริงที่ว่า การเทสหลายกลยุทธ์สร้าง false discovery ได้
 
-- Total trades
-- Trades per month
-- Trades per year
+ถ้าเทส 100 สมมติฐานแล้ว 3 ตัวดูดีเยี่ยม **อย่า**สรุปทันทีว่าทั้ง 3 ตัวนั้น
+เป็น edge จริง
+
+ติดตาม:
+- จำนวนสมมติฐานที่เทส
+- จำนวนที่ผ่านตัวกรองเบื้องต้น
+- จำนวนที่ผ่าน WFO
+- จำนวนที่ผ่าน unseen holdout
+
+ใช้เหตุผลเชิงสถิติที่เหมาะสมเท่าที่ทำได้จริง
+
+==================================================
+Metric สำคัญ
+==================================================
+
+รายงานสำหรับทุกกลยุทธ์ที่เป็น candidate:
+
+- จำนวนเทรดทั้งหมด
+- เทรดต่อเดือน
+- เทรดต่อปี
 - Win rate
-- Average win in R
-- Average loss in R
-- Expectancy in R/trade
+- กำไรเฉลี่ยเป็น R
+- ขาดทุนเฉลี่ยเป็น R
+- Expectancy เป็น R/เทรด
 - Profit Factor
 - Max Drawdown
-- Average Drawdown
-- Long performance
-- Short performance
-- Performance by quarter
-- Performance by market regime
-- WFO fold consistency
-- Worst fold
-- Best fold
-- Transaction-cost sensitivity
-- Parameter sensitivity
+- Drawdown เฉลี่ย
+- ผลงานฝั่ง Long
+- ผลงานฝั่ง Short
+- ผลงานรายไตรมาส
+- ผลงานตาม regime ตลาด
+- ความสม่ำเสมอของ WFO fold
+- Fold ที่แย่ที่สุด
+- Fold ที่ดีที่สุด
+- ความไวต่อต้นทุนธุรกรรม
+- ความไวต่อพารามิเตอร์
 
-Also report the opportunity rate:
+รายงานอัตราโอกาสด้วย:
 
-eligible setups / total M15 bars
-
-==================================================
-RISK RULE
-==================================================
-
-Do NOT increase the current 0.5% base risk.
-
-Do NOT increase leverage.
-
-Do NOT change the rolling win-rate guard.
-
-Do NOT change SL/TP.
-
-The purpose of this research is to find more high-quality opportunities, not to increase risk.
-
-If multiple strategies eventually become live candidates, design a portfolio-level risk budget rather than simply adding 0.5% risk per strategy.
+setup ที่ eligible / แท่ง M15 ทั้งหมด
 
 ==================================================
-EXPECTED OUTPUT
+กฎเรื่อง Risk
 ==================================================
 
-Produce a research report with:
+**ห้าม**เพิ่ม base risk 0.5% ปัจจุบัน
 
-1. Executive Summary
+**ห้าม**เพิ่ม leverage
 
-2. Current V0 Opportunity Funnel
+**ห้าม**เปลี่ยน rolling win-rate guard
 
-3. Why V0 Trades Infrequently
+**ห้าม**เปลี่ยน SL/TP
 
-4. Experiment Matrix
+จุดประสงค์ของงานวิจัยนี้คือหาโอกาสคุณภาพสูงเพิ่มเติม ไม่ใช่การเพิ่ม risk
 
-5. Results for Each Experiment
-
-6. Walk-forward Results
-
-7. Out-of-Sample Results
-
-8. Transaction Cost Sensitivity
-
-9. Overfitting / Multiple Testing Analysis
-
-10. Recommended Strategies
-
-11. Strategies That Should Be Rejected
-
-12. Proposed V1 Architecture
-
-13. Risk Implications
-
-14. Exact experiments that should be run next
+ถ้าท้ายที่สุดมีหลายกลยุทธ์กลายเป็น live candidate ให้ออกแบบ risk budget
+ระดับพอร์ต แทนที่จะบวก risk 0.5% เพิ่มต่อกลยุทธ์แบบง่ายๆ
 
 ==================================================
-FINAL DECISION FRAMEWORK
+ผลลัพธ์ที่คาดหวัง
 ==================================================
 
-At the end classify each candidate as:
+จัดทำรายงานวิจัยที่มี:
 
-[KEEP]
-Robust enough to retain
+1. บทสรุปผู้บริหาร
+2. Opportunity Funnel ของ V0 ปัจจุบัน
+3. เหตุผลที่ V0 เทรดไม่บ่อย
+4. Matrix การทดลอง
+5. ผลของแต่ละการทดลอง
+6. ผล Walk-forward
+7. ผล Out-of-Sample
+8. ความไวต่อต้นทุนธุรกรรม
+9. การวิเคราะห์ Overfitting / Multiple Testing
+10. กลยุทธ์ที่แนะนำ
+11. กลยุทธ์ที่ควรปฏิเสธ
+12. สถาปัตยกรรม V1 ที่เสนอ
+13. ผลกระทบด้าน Risk
+14. การทดลองที่ควรรันต่อไปอย่างชัดเจน
 
-[PAPER TEST]
-Promising but needs live/paper evidence
+==================================================
+กรอบการตัดสินใจสุดท้าย
+==================================================
 
-[RESEARCH]
-Interesting but insufficient evidence
+จัดประเภทแต่ละ candidate ท้ายสุดเป็น:
 
-[REJECT]
-No evidence of robust edge
+**[KEEP]**
+แข็งแรงพอที่จะเก็บไว้
 
-[Never promote directly to LIVE]
+**[PAPER TEST]**
+มีความหวังแต่ต้องการหลักฐานจาก live/paper
 
-The current V0 configuration must remain the control group throughout the research.
+**[RESEARCH]**
+น่าสนใจแต่หลักฐานยังไม่พอ
 
-Most important:
-Do not try to make the system trade more.
-Try to discover whether there are MORE independent situations in which the system has a measurable positive expectancy.
+**[REJECT]**
+ไม่มีหลักฐานว่ามี edge ที่แข็งแรง
 
-If increasing trade frequency reduces expectancy or robustness, recommend keeping the lower-frequency strategy.
+**[ห้ามขึ้น LIVE โดยตรงเด็ดขาด]**
 
-The correct answer may be:
-"Do not increase frequency."
+Config V0 ปัจจุบันต้องคงเป็น control group ตลอดทั้งงานวิจัย
 
-That is an acceptable and valuable research result.
+**สำคัญที่สุด:**
+อย่าพยายามทำให้ระบบเทรดมากขึ้น
+พยายามค้นหาว่ามีสถานการณ์อิสระเพิ่มเติมหรือไม่ ที่ระบบมี positive
+expectancy ที่วัดได้จริง
+
+ถ้าการเพิ่มความถี่การเทรดทำให้ expectancy หรือความแข็งแกร่งลดลง ให้แนะนำ
+เก็บกลยุทธ์ความถี่ต่ำไว้แบบเดิม
+
+คำตอบที่ถูกต้องอาจเป็น:
+"อย่าเพิ่มความถี่"
+
+นั่นคือผลวิจัยที่ยอมรับได้และมีคุณค่า

@@ -1,122 +1,115 @@
-# Handoff — AI Trading System (crypto pivot)
+# Handoff — AI Trading System (ปรับทิศทางเป็น crypto)
 
-Last updated: 2026-08-25. Read this first in any new session before touching code.
+อัปเดตล่าสุด: 2026-08-25 อ่านไฟล์นี้ก่อนเป็นอันดับแรกทุกครั้งที่เริ่ม session ใหม่ ก่อนแตะโค้ด
 
-## What this project is
+## โปรเจกต์นี้คืออะไร
 
-Originally scoped as XAU/USD via MT5 (see PIVOT NOTICE at top of
-PROJECT_PLAN.md), pivoted to **Binance Futures crypto perpetuals** because
-MT5's lot-size minimums made 1% risk sizing impossible on a 2,000 THB
-account. PROJECT_PLAN.md §0-§21 is still the XAU/MT5-era plan (kept for
-reference); the crypto-specific execution details live in code + this repo's
-docs/, not in PROJECT_PLAN.md.
+เดิมออกแบบไว้สำหรับ XAU/USD ผ่าน MT5 (ดู PIVOT NOTICE ที่หัวไฟล์
+PROJECT_PLAN.md) แล้วปรับทิศทางมาเป็น **Binance Futures crypto perpetuals**
+เพราะ lot-size ขั้นต่ำของ MT5 ทำให้ risk sizing 1% เป็นไปไม่ได้บนบัญชี 2,000
+บาท PROJECT_PLAN.md §0-§21 ยังคงเป็นแผนยุค XAU/MT5 (เก็บไว้อ้างอิง)
+รายละเอียดการทำงานจริงของฝั่ง crypto อยู่ในโค้ด + docs/ ของ repo นี้ ไม่ได้อยู่
+ใน PROJECT_PLAN.md
 
-**Read `docs/FINDINGS.md` before re-running any backtest/research experiment
-— it records what's already been tried and rejected, to avoid repeating work.**
+**อ่าน `docs/FINDINGS.md` ก่อนรัน backtest/งานวิจัยซ้ำทุกครั้ง — มันบันทึกไว้ว่า
+อะไรเคยลองแล้วและถูกปฏิเสธไปแล้วบ้าง เพื่อไม่ให้ทำงานซ้ำ**
 
-## Current infrastructure (all live and running)
+## โครงสร้างพื้นฐานปัจจุบัน (รันอยู่จริงทั้งหมด)
 
 - **VPS**: Oracle Cloud Free Tier, Ubuntu 24.04, `134.185.81.78`, user `ubuntu`
-  - SSH key: `~/.ssh/oracle_trading_vps.key` (on the dev Mac, gitignored)
-  - Hardened: UFW (only port 22 open), fail2ban, key-only SSH, root login
-    disabled, unattended-upgrades auto-reboot disabled
-- **Repo**: `https://github.com/tongeiei/ai_trading_system` (public), cloned
-  to `~/ai_trading_system` on the VPS, kept in sync via `git pull`
-- **systemd units** (`/etc/systemd/system/`, sources in `deploy/`):
-  - `signal-cycle.timer` + `.service` — runs `scripts/run_signal_cycle.py`
-    every M15 bar-close (`OnCalendar=*:0/15:30`)
-  - `dashboard.service` — Streamlit dashboard, persistent, bound to
-    `127.0.0.1:8501` only (view via SSH tunnel: `ssh -i ~/.ssh/oracle_trading_vps.key -N -L 8501:127.0.0.1:8501 ubuntu@134.185.81.78`, then open `http://localhost:8501`)
-- **Binance**: testnet/demo trading only (`enable_demo_trading(True)` via
-  ccxt) — no real money anywhere yet. API keys in `.env` on both dev Mac and
-  VPS (gitignored, never committed).
-- **`.env` required keys**: `BINANCE_TESTNET_API_KEY`, `BINANCE_TESTNET_API_SECRET`,
-  optionally `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_TARGET_ID` (alerting — not
-  yet configured, see "Immediate next step" below).
+  - SSH key: `~/.ssh/oracle_trading_vps.key` (อยู่บน dev Mac, ไม่ commit เข้า git)
+  - ผ่านการ harden: UFW (เปิดแค่ port 22), fail2ban, SSH แบบ key-only เท่านั้น,
+    ปิด root login, ปิด auto-reboot ของ unattended-upgrades
+- **Repo**: `https://github.com/tongeiei/ai_trading_system` (public), clone ไว้
+  ที่ `~/ai_trading_system` บน VPS, sync ผ่าน `git pull`
+- **systemd units** (`/etc/systemd/system/`, ต้นฉบับอยู่ใน `deploy/`):
+  - `signal-cycle.timer` + `.service` — รัน `scripts/run_signal_cycle.py`
+    ทุกครั้งที่แท่ง M15 ปิด (`OnCalendar=*:0/15:30`)
+  - `dashboard.service` — Streamlit dashboard, รันตลอด, bind แค่
+    `127.0.0.1:8501` (ดูผ่าน SSH tunnel: `ssh -i ~/.ssh/oracle_trading_vps.key -N -L 8501:127.0.0.1:8501 ubuntu@134.185.81.78` แล้วเปิด `http://localhost:8501`)
+- **Binance**: ใช้ testnet/demo trading เท่านั้น (`enable_demo_trading(True)`
+  ผ่าน ccxt) — ยังไม่มีเงินจริงที่ไหนเลย API key อยู่ใน `.env` ทั้งบน dev Mac
+  และ VPS (ไม่ commit เข้า git)
+- **key ที่ต้องมีใน `.env`**: `BINANCE_TESTNET_API_KEY`, `BINANCE_TESTNET_API_SECRET`,
+  และถ้าจะใช้แจ้งเตือน `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_TARGET_ID` (ดูหัวข้อ
+  "ขั้นต่อไปที่ต้องทำ" ด้านล่าง)
 
-## Strategy status — what's proven, what's not
+## สถานะกลยุทธ์ — อะไรพิสูจน์แล้ว อะไรยังไม่
 
-- **Symbol**: ETH/USDT:USDT only. BTC/SOL/BNB tested and rejected (no edge).
+- **Symbol**: ETH/USDT:USDT เท่านั้น (BTC/SOL/BNB เทสแล้วถูกปฏิเสธ — ไม่มี
+  edge ในรอบแรก; ดู `docs/FINDINGS.md` สำหรับ round สอง — XRP เป็น tier-2
+  candidate ที่กำลัง paper-trade อยู่ ส่วน BTC ยัง shelved)
 - **Config (locked)**: EMA-pullback V0 rules, `ADX_threshold=35`, `SL=2.5x ATR`,
-  `TP=2x SL`. Do not re-tune without a fresh, disjoint holdout — see
-  docs/FINDINGS.md for why ad-hoc re-tuning already burned through several
-  configs on the same data.
-- **ML (LightGBM)**: tested and REJECTED at the P5 gate — AUC ~0.497 on
-  holdout, indistinguishable from noise. Do not re-introduce an "AI
-  probability" display or gate; `src/live/ev_estimate.py` uses historical
-  backtest base rates instead, explicitly not ML, and is labeled as such
-  everywhere (dashboard, code comments).
-- **Walk-forward finding (important)**: edge is real but UNSTABLE. 8/12
-  quarterly folds positive, only 2/12 individually statistically
-  significant, and 2023 H2 was significantly NEGATIVE (whipsaw/high-vol
-  regime). Base risk was lowered from planned 1-2% to **0.5%**
-  (`BASE_RISK_PCT` in `scripts/run_signal_cycle.py`) because of this.
-- A rolling win-rate guard (`rolling_winrate_risk_multiplier` in
-  `src/live/guards.py`) halves risk automatically if the last 20 closed
-  trades' win rate drops below 30% — an early warning modeled on the 2023
-  H2 failure mode, triggers before DD/daily-loss thresholds would.
+  `TP=2x SL` ห้าม tune ใหม่โดยไม่มี holdout ใหม่ที่แยกจากเดิมจริงๆ — ดู
+  docs/FINDINGS.md ว่าทำไม การ re-tune แบบเฉพาะกิจถึงเผาผลาญ config ไปหลาย
+  ชุดแล้วบนข้อมูลชุดเดียวกัน
+- **ML (LightGBM)**: เทสแล้วถูก**ปฏิเสธ**ที่ gate P5 — AUC ~0.497 บน holdout
+  แยกไม่ออกจาก noise ห้ามเอา "AI probability" display หรือ gate กลับมาใช้อีก
+  `src/live/ev_estimate.py` ใช้ base rate จาก backtest ประวัติศาสตร์แทน ไม่ใช่
+  ML อย่างชัดเจน และ label ไว้แบบนั้นทุกที่ (dashboard, comment ในโค้ด)
+- **ผล walk-forward (สำคัญ)**: edge เป็นของจริงแต่**ไม่เสถียร** 8/12 quarterly
+  fold เป็นบวก มีแค่ 2/12 ที่ significant ทางสถิติจริงๆ และ 2023 H2 ติดลบอย่าง
+  significant (regime whipsaw/vol สูง) เพราะเหตุนี้จึงลด base risk จากแผนเดิม
+  1-2% เหลือ **0.5%** (`base_risk_pct` ต่อ symbol ใน `scripts/run_signal_cycle.py`)
+- มี rolling win-rate guard (`rolling_winrate_risk_multiplier` ใน
+  `src/live/guards.py`) ที่ลด risk ลงครึ่งหนึ่งอัตโนมัติถ้า win rate ของ 20
+  เทรดปิดล่าสุด (ต่อ symbol) ต่ำกว่า 30% — เป็น early warning ที่จำลองจาก
+  failure mode ของ 2023 H2 จะ trigger ก่อนที่ threshold DD/daily-loss จะทำงาน
 
-## What's implemented (all tested, 39 unit tests passing)
+## สิ่งที่ implement แล้ว (เทสครบ, unit test ผ่านทั้งหมด)
 
 ```
 src/data/           binance_loader, funding_rate_loader, db (SQLite schema)
-src/features/        engine.py — 12 features, leak-tested
-src/regime/          rules.py — TREND/RANGE classifier
-src/strategy/        v0_rules.py (locked config), breakout.py, mean_reversion.py (both rejected)
+src/features/        engine.py — 12 features, เทสเรื่อง data leakage แล้ว
+src/regime/          rules.py — ตัวจำแนก TREND/RANGE
+src/strategy/        v0_rules.py (config ที่ล็อกไว้), breakout.py, mean_reversion.py (ทั้งคู่ถูกปฏิเสธ)
 src/labeling/        triple_barrier.py
-src/backtest/        costs.py, significance.py (bootstrap test)
-src/models/          train.py, calibrate.py — LightGBM pipeline, kept for reference, NOT used live
-src/risk/            sizing.py — position sizing, anti-martingale tested
+src/backtest/        costs.py (slippage เป็นสัดส่วนราคาแล้ว), significance.py (bootstrap test)
+src/models/          train.py, calibrate.py — LightGBM pipeline เก็บไว้อ้างอิง ไม่ได้ใช้จริง
+src/risk/            sizing.py — position sizing, เทส anti-martingale แล้ว
 src/live/
-  order_executor.py    entry+SL+TP placement (exchange-native algo orders),
-                        fetch_open_algo_orders (ccxt doesn't see these natively — workaround)
-  guards.py            spread/stale-data/heartbeat/retry-limit/winrate guards
-  reconcile.py         orphan-position detection (CRITICAL if position has no SL)
-  position_timeout.py  12h forced close + organic SL/TP-fired detection
-  ev_estimate.py       historical-stats EV gate (NOT ML — see above)
-  alerting.py          LINE Messaging API alerts (needs LINE_CHANNEL_ACCESS_TOKEN
-                        + LINE_TARGET_ID, not yet set)
-  logging_store.py     log-before-execute helpers into signals/orders/trades/risk_decisions
-  signal_service.py    live OHLCV fetch + feature/regime/signal generation
-src/dashboard/app.py  Streamlit — heartbeat, candlestick chart w/ trade markers,
-                       EV panel, equity curve, trades/signals/risk-decision tables
+  order_executor.py    วางไม้ entry+SL+TP (exchange-native algo order),
+                        fetch_open_algo_orders (ccxt มองไม่เห็น order พวกนี้ตรงๆ — มี workaround)
+  guards.py            guard: spread/ข้อมูลค้าง/heartbeat/retry-limit/winrate
+  reconcile.py         ตรวจจับ position กำพร้า (CRITICAL ถ้า position ไม่มี SL)
+  position_timeout.py  บังคับปิดที่ 12 ชม. + ตรวจจับ SL/TP ที่ยิงเองบน exchange
+  ev_estimate.py       EV gate จาก historical stats (ไม่ใช่ ML — ดูด้านบน)
+  alerting.py          แจ้งเตือนผ่าน LINE Messaging API (ต้องมี LINE_CHANNEL_ACCESS_TOKEN
+                        + LINE_TARGET_ID)
+  logging_store.py     helper แบบ log-ก่อน-execute ลง signals/orders/trades/risk_decisions,
+                        มี recent_closed_r_multiples() แยกตาม symbol
+  signal_service.py    ดึง OHLCV สด + สร้าง feature/regime/signal
+src/dashboard/app.py  Streamlit — heartbeat, กราฟแท่งเทียนพร้อม marker เทรด,
+                       แผง EV, equity curve, ตาราง trades/signals/risk-decision
 ```
 
-## Immediate next step (mid-task when context ran out)
+## สถานะปัจจุบัน (อัปเดต 2026-08-26)
 
-Alerting switched from Discord to **LINE Messaging API** (Discord webhook
-code replaced outright — LINE Notify, the simpler webhook-style option, was
-shut down by LINE at end of March 2025, so this needs a LINE Official
-Account + Messaging API channel instead). Code is written and deployed
-(`src/live/alerting.py`, wired into `scripts/run_signal_cycle.py`), fails
-safe if unconfigured (logs + skips, doesn't crash). Waiting on:
+**Multi-symbol เปิดใช้งานแล้ว**: `scripts/run_signal_cycle.py` refactor เป็น
+`SYMBOLS` config list — แต่ละ symbol รันแยก cycle isolated กัน (symbol หนึ่งพัง
+ไม่กระทบตัวอื่น) ตอนนี้รัน **ETH (risk 0.5%) + XRP (risk 0.25%, paper-trade,
+tier-2 candidate)** พร้อมกัน ดู `docs/FINDINGS.md` ส่วน "2nd-symbol search"
+สำหรับหลักฐานเบื้องหลังการเลือก XRP และเหตุผลที่ BTC ถูกพักไว้
 
-1. User creates a LINE Official Account (via LINE Official Account Manager,
-   free) and enables the Messaging API for it, then issues a
-   **channel access token** (long-lived) from the Messaging API settings
-   page
-2. User gets the target **userId** or **groupId** to push to — easiest way
-   is to add the OA as a friend (or invite it to a group) and read the
-   `userId`/`source.groupId` off an incoming webhook event, or use LINE's
-   "Verify" tool in the console
-3. User adds `LINE_CHANNEL_ACCESS_TOKEN=...` and `LINE_TARGET_ID=...` to
-   `.env` on the dev Mac themselves (assistant should not see/type these —
-   same handling as the Binance API keys)
-4. Assistant scp's the updated `.env` to the VPS (same pattern used for the
-   Binance keys — copy the file, never read its contents)
-5. Restart `signal-cycle.service` on the VPS, verify a test alert fires
+**แจ้งเตือน**: LINE Messaging API ตั้งค่าและใช้งานได้แล้ว (Discord ถูกเลิกใช้
+เพราะ LINE Notify ถูกปิดบริการปลายเดือนมีนาคม 2025) `alert_trade_opened` /
+`alert_trade_closed` / `alert_critical` / `alert_error` ยิงแบบ real-time ทันที
+ที่มีเหตุการณ์ — เป็นช่องทางเดียวที่ real-time จริงๆ, dashboard ต้องกด
+refresh เอง (cache 30 วินาที ไม่มี auto-refresh loop)
 
-## Known gaps / honest todo list
+## ช่องว่างที่ยังมี / to-do แบบตรงไปตรงมา
 
-- No trade has occurred on live/paper yet — ETH has been in RANGE regime
-  continuously since automation started (~2026-08-24), which is statistically
-  unremarkable (see conversation: P(no trade in 71 bars) ≈ 6-19% depending
-  on window, not a bug).
-- Mainnet shadow (Phase B proper, per the 5-layer testing framework
-  discussed) hasn't happened — everything so far runs on demo trading, not
-  against real mainnet orderbook depth. Real execution costs (spread/slippage)
-  are still assumptions from the backtest cost model, not measured live.
-- No robustness check yet on dropping the 2 outlier-good months (Aug 2025,
-  Aug 2026) from the walk-forward — flagged as a next step, never done.
-- `docs/TASKS.md` still reflects the original MT5/XAU-era phase breakdown;
-  it hasn't been rewritten for the crypto pivot beyond the P0 section.
+- ยังไม่มีเทรดเกิดขึ้นจริงบน demo — ETH อยู่ใน regime RANGE ต่อเนื่องมาตั้งแต่
+  ระบบอัตโนมัติเริ่มทำงาน (~2026-08-24) ซึ่งทางสถิติไม่ใช่เรื่องผิดปกติ (ดูบท
+  สนทนา: P(ไม่มีเทรดใน 71 แท่ง) ≈ 6-19% แล้วแต่ window ไม่ใช่ bug)
+- Mainnet shadow (Phase B ตัวจริง ตาม 5-layer testing framework ที่เคยคุยไว้)
+  ยังไม่เกิดขึ้น — ทุกอย่างตอนนี้รันบน demo trading ไม่ใช่กับความลึกของ
+  orderbook จริงบน mainnet ต้นทุน execution จริง (spread/slippage) ยังเป็น
+  สมมติฐานจาก cost model ของ backtest ไม่ได้วัดจากของจริง
+- ยังไม่มีการเช็ค robustness จากการตัด 2 เดือนที่ผลดีผิดปกติ (ส.ค. 2025,
+  ส.ค. 2026) ออกจาก walk-forward — เคย flag ไว้เป็นขั้นต่อไป แต่ยังไม่ได้ทำ
+- `docs/TASKS.md` ยังสะท้อนโครงสร้าง phase ของยุค MT5/XAU เดิมอยู่ — ยังไม่ได้
+  เขียนใหม่สำหรับการปรับทิศทางมา crypto นอกเหนือจากส่วน P0
+- Slippage bug ที่แก้ไปแล้ว (`src/backtest/costs.py` เดิมใช้ 0.5 USD/side คงที่
+  ผิดกับ coin ราคาต่ำ) ตอนนี้เป็นสัดส่วนราคาแล้ว (`SLIPPAGE_BPS`) และ ETH edge
+  ถูก re-confirm แล้วว่าไม่เปลี่ยน — ดู FINDINGS.md
