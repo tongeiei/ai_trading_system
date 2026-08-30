@@ -32,7 +32,11 @@ def fetch_recent_ohlcv(exchange: ccxt.Exchange, symbol: str, timeframe: str, war
         batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=cursor, limit=1500)
         if not batch:
             break
-        batch = [b for b in batch if b[0] <= end_ms]
+        # filter on bar CLOSE time, not open time — an open-time filter lets the
+        # still-forming bar (open <= end_ms but not yet closed) through, which
+        # then becomes iloc[-1] downstream and silently hides the real signal
+        # on the last fully-closed bar (see docs/FINDINGS.md 2026-08-30 bug)
+        batch = [b for b in batch if b[0] + ms_per_candle <= end_ms]
         all_rows.extend(batch)
         last_ts = batch[-1][0] if batch else cursor
         if last_ts <= cursor:
