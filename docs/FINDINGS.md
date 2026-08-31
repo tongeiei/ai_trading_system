@@ -270,3 +270,41 @@ guard อ่านประวัติแยกตาม symbol ผ่าน `r
 paper-trade บน demo คู่กับ ETH ที่ risk 0.25% บน VPS จริง (`134.185.81.78`)
 ยืนยันแล้วว่า cycle รันทั้งสอง symbol สำเร็จไม่มี error (ดู
 [HANDOFF.md](HANDOFF.md) สำหรับสถานะ deploy ล่าสุด)
+
+---
+
+## 2026-08-31 — ETH/XRP Phase 7: ยืด max-hold barrier — FALSIFIED
+
+Pre-registered ที่ `docs/research/ETH_PHASE7_HOLD_PLAN.md` ก่อนรัน (ตาม
+process เดียวกับ track GOLD) ที่มา: Phase 6 (ETH_V1_RESEARCH_REPORT.md) วัด
+ไว้ก่อนรู้ผล EV-gate audit ว่า mean mark-to-market R ของ 1,412 trade ไม่
+plateau ตลอด 12h และ 20.9% โดน timeout บังคับปิดทั้งที่ MFE เฉลี่ย +1.12R —
+ตั้งสมมติฐานว่า barrier 12h อาจตัดวิทยานิพนธ์การเทรดทิ้งก่อนคลี่คลาย
+
+Grid `{12h(control),18h,24h,36h,48h}` บน V0 ล็อก (ADX35/SL2.5/TP2R) ทั้ง
+ETH และ XRP, DEV(<2025)/HOLDOUT(2025+) split เดียวกับ XRP vetting เดิม —
+**REJECT ทั้ง grid ทั้งสองเหรียญ** ด้วยเหตุผลอิสระ 2 ข้อ:
+
+1. **Cost-stress 2× ตกทุกจุดทั้งสองเหรียญ** แม้จุดดีที่สุด — ETH PF 0.788,
+   XRP PF 1.010 (ที่ 48h, ยังไม่ถึงเกณฑ์ 1.10) ETH ยังตก DEV gate เองด้วย
+   (fold+ ค้างที่ 40% ตลอด 5 hold ไม่ขยับเลย ต้องการ 60%)
+2. **Runaway-optimum kill criterion ที่ล็อกไว้ก่อนเห็นผล — โดนทั้งคู่**: PF
+   ยังไต่ขึ้นต่อเนื่องไม่มี plateau ถึง 48h ตรงกับธงแดงที่ตั้งไว้ว่า "= กำลัง
+   กลายเป็น trend-following ไม่มี time-stop ไม่ใช่การแก้ barrier ที่ผูกอยู่
+   จริง" resolution-rate สนับสนุนเรื่องเดียวกัน (ไต่ไปเกือบ 99% ที่ 48h ไม่
+   เคยอิ่มตัวในช่วงที่ทดสอบ)
+
+**หมายเหตุกันหลอกตัวเอง**: ETH ผ่าน EV-gate relevance check (recompute จาก
+CAL fold 2025H1) ที่ hold≥24h แต่ window นั้นอยู่ในช่วงที่รู้อยู่แล้วว่าแข็ง
+แรงที่สุดของ ETH (ตรงกับ audit Round 6: edge เต็ม 13 ไตรมาสจริงๆ มีแค่
+0.038R) — ไม่ใช่หลักฐานสนับสนุน เป็น artifact ของการเลือก window เท่านั้น
+DEV gate ที่กว้างกว่าคือตัวชี้จริง และ ETH ไม่ผ่านเลยสักจุด
+
+**การตัดสินใจ**: ปิดเคส Phase 7 ไม่แตะค่า live (`triple_barrier.
+MAX_HOLD_BARS_M1` / `position_timeout.MAX_HOLD` คงที่ 12h เดิม) ทั้ง gold
+track (8/8 falsified) และตอนนี้ ETH hold-extension ยืนยัน pattern เดียวกัน
+ว่า naive parameter-level fix ไม่ผ่านเกณฑ์ ของที่ยังไม่ได้ลอง: (B) ชั้น
+`p_cal` แบบที่ PROJECT_PLAN.md §8 ออกแบบไว้จริง (gate เลือก setup ไม่ใช่
+สวิตช์กลยุทธ์) หรือ (C) ขยาย symbol screen พร้อมคุม multiple-comparison —
+ทั้งสองยังไม่เริ่ม ผลเต็ม: `docs/research/artifacts/eth_phase7_hold_extension.csv`
+(ไม่ commit เข้า git — ตามธรรมเนียม track นี้ทั้งหมด)

@@ -115,3 +115,68 @@ grid ที่ขยายหลังเห็นผลคือ fitting)
 (ข้อ 6): เสนอ max_hold ที่ผ่าน กับตัวเลขเต็ม (PF, WFO%, holdout CI, cost
 stress, ev_r ที่ recompute) ให้ตัดสินใจ deploy หรือไม่ — ไม่ deploy อัตโนมัติ
 จากผลสถิติอย่างเดียว
+
+---
+
+## ผล (2026-08-31) — FALSIFIED
+
+Script: `scripts/research_phase7_hold_extension.py`, ผลเต็ม:
+`docs/research/artifacts/eth_phase7_hold_extension.csv` (log run:
+ดู commit message)
+
+### ตารางผลเต็ม (DEV / cost-stress 2× / holdout / EV-gate CAL-fold)
+
+**ETH** (n_dev=696, n_holdout=784 ทุก hold — เพราะ trade universe เดียวกัน
+ถูก re-label ที่ barrier ต่างกันเท่านั้น)
+
+| hold | dev_pf | dev fold+ | cost-stress 2× pf | holdout mean_r (p) | ev_r (CAL 2025H1) |
+|---|---|---|---|---|---|
+| 12h (control) | 0.859 | 2/5 (40%) | 0.672 | +0.153R (p=0.001) | +0.074R fail |
+| 18h | 0.910 | 2/5 (40%) | 0.726 | +0.167R (p=0.001) | +0.124R fail |
+| 24h | 0.924 | 2/5 (40%) | 0.741 | +0.168R (p=0.002) | +0.171R PASS |
+| 36h | 0.973 | 2/5 (40%) | 0.785 | +0.157R (p=0.004) | +0.193R PASS |
+| 48h | 0.975 | 2/5 (40%) | 0.788 | +0.174R (p=0.002) | +0.199R PASS |
+
+**XRP** (n_dev=679, n_holdout=683)
+
+| hold | dev_pf | dev fold+ | cost-stress 2× pf | holdout mean_r (p) | ev_r (CAL 2025H1) |
+|---|---|---|---|---|---|
+| 12h (control) | 1.123 | 2/5 (40%) | 0.913 | +0.104R (p=0.039) | +0.177R PASS |
+| 18h | 1.173 | 2/5 (40%) | 0.968 | +0.113R (p=0.033) | +0.193R PASS |
+| 24h | 1.177 | **4/5 (80%)** | 0.976 | +0.113R (p=0.034) | +0.198R PASS |
+| 36h | 1.207 | **4/5 (80%)** | 1.006 | +0.115R (p=0.036) | +0.243R PASS |
+| 48h | 1.210 | **4/5 (80%)** | 1.010 | +0.114R (p=0.038) | +0.224R PASS |
+
+### Verdict per gate ที่ pre-register ไว้ (§4)
+
+1. **DEV gate (item 1)**: ETH ตกทุกจุด — fold+ ค้างที่ 40% ตลอด 5 hold ไม่ขยับ
+   แม้แต่จุดเดียว (ไม่ใช่แค่ PF ต่ำกว่า 1.10) XRP ผ่านที่ 24h/36h/48h
+   (fold+ กระโดดจาก 40%→80% ที่ 24h)
+2. **Cost-stress 2× (item 3, เช็คก่อนแตะ holdout)**: **ตกทุกจุดทั้งสองเหรียญ**
+   แม้แต่จุดที่ดีที่สุด — ETH 0.788 ที่ 48h, XRP 1.010 ที่ 48h (ยังไม่ถึง
+   1.10) นี่คือจุดตายอิสระที่ไม่ต้องพึ่ง kill criteria ด้านล่างเลย
+3. **Runaway-optimum kill criterion (§5)**: **โดนทั้งสองเหรียญ** — PF/ev_r
+   ยังไต่ขึ้นต่อเนื่องไม่หยุดถึง 48h ไม่มี plateau ตรงกับธงแดงที่ล็อกไว้ก่อน
+   เห็นผลว่า "= trend-following ไม่มี time-stop ไม่ใช่การแก้ barrier ที่ผูก
+   อยู่จริง" → REJECT ทั้ง grid
+4. **Resolution-rate check (§5)**: สอดคล้องกับข้อ 3 — resolution rate ไต่จาก
+   ~78-80% (ที่ 12h) ไปเกือบ 97-99% (ที่ 48h) ไม่เคยอิ่มตัวในช่วงที่ทดสอบ
+   แปลว่าไม่เคยเจอจุดที่ barrier "พอแล้ว" มีแต่ขยายจนไม้เกือบทั้งหมดจบเอง
+   ตามธรรมชาติ = กลยุทธ์คนละตัวที่ยังไม่ผ่าน validation ของมันเอง
+
+### หมายเหตุสำคัญ — อย่าอ่าน EV-gate PASS ของ ETH เป็นหลักฐานสนับสนุน
+
+`ev_r_cal_fold` ของ ETH ผ่าน 0.15R ที่ hold≥24h แต่ **CAL fold (2025-01..
+2025-06) อยู่ในช่วงที่รู้อยู่แล้วว่าเป็นช่วงแข็งแรงที่สุดของ ETH ในประวัติ**
+(docs/research/BTC_EDGE_SEARCH.md Round 6 addendum: edge เต็มช่วง 13 ไตรมาส
+จริงๆ มีแค่ 0.038R, ผ่าน gate แค่ 3/13 ไตรมาส) DEV gate ที่ครอบคลุมกว้างกว่า
+คือตัวชี้ที่น่าเชื่อกว่า และ ETH ไม่ผ่านเลยสักจุดในนั้น — บรรทัด EV-gate PASS
+นี้จึงเป็น artifact ของการเลือก window ไม่ใช่หลักฐานว่าปัญหาถูกแก้
+
+### คำตัดสิน
+
+**REJECT ทั้ง grid ทั้งสองเหรียญ** — 12h barrier ไม่ใช่ข้อจำกัดที่ยืดแล้วแก้
+ได้ตรงๆ ตามที่ Phase 6 ชี้เป้าไว้ ปิดเคส Phase 7 ไม่ deploy อะไรเข้า live
+(`triple_barrier.MAX_HOLD_BARS_M1`/`position_timeout.MAX_HOLD` คงค่าเดิม
+12h) V0 บน ETH/XRP ยังตก EV gate ที่ deploy จริงอยู่ (commit 59c59e2) —
+สถานะ "ไม่มีไม้เข้า" ยังคงอยู่ตามความจริงของตัวเลข
