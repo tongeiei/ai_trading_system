@@ -33,11 +33,13 @@ from src.data.db import init_db, trades as trades_table
 from src.live.signal_service import generate_live_signal
 from src.live.order_executor import execute_signal_with_logging, OrderRejected
 from src.live.reconcile import reconcile_symbol
-from src.live.logging_store import log_signal, recent_closed_r_multiples
+from src.live.logging_store import log_signal, recent_closed_r_multiples, consecutive_ev_gate_rejections
 from src.live.guards import heartbeat_guard, rolling_winrate_risk_multiplier
 from src.live.position_timeout import close_expired_positions, detect_and_close_organic_exits
-from src.live.ev_estimate import estimate_ev
-from src.live.alerting import alert_trade_opened, alert_trade_closed, alert_critical, alert_error
+from src.live.ev_estimate import estimate_ev, EV_THRESHOLD_R
+from src.live.alerting import (
+    alert_trade_opened, alert_trade_closed, alert_critical, alert_error, alert_gate_blocked,
+)
 from src.risk.sizing import ExchangeSpec
 
 # Each entry is one independently-traded symbol. base_risk_pct is per-symbol so a
@@ -53,6 +55,12 @@ SYMBOLS = [
     {"symbol": "XRP/USDT:USDT", "config": {"adx": 35, "sl": 2.5}, "base_risk_pct": 0.0025},
 ]
 WINRATE_WINDOW = 20
+# One M15 bar per cycle, so this is ~24h of consecutive gate rejections. Alerting
+# on the streak (once, when it first crosses) is what makes "the strategy can no
+# longer clear its own EV gate" visible — that state is otherwise indistinguishable
+# from a quiet market in the logs, which is how a full week of zero trades went
+# unnoticed (docs/research/BTC_EDGE_SEARCH.md Round 6 addendum).
+EV_GATE_ALERT_STREAK = 96
 WINRATE_THRESHOLD = 0.30
 HEARTBEAT_PATH = PROJECT_ROOT / "data" / "heartbeat.txt"
 DB_PATH = str(PROJECT_ROOT / "data" / "trading.db")
@@ -105,8 +113,13 @@ def run_symbol_cycle(exchange, public_exchange, engine, markets, symbol, config,
     # sl_distance is computed by v0_rules for every bar regardless of action,
     # so this can run even for candidates that later get downgraded here.
     ev = None
+    no_trade_decision = None
+    no_trade_reason = None
     original_action = latest["action"]
-    if original_action != "NO_TRADE":
+    if original_action == "NO_TRADE":
+        no_trade_decision = "NO_SETUP"
+        no_trade_reason = f"v0_rules: no entry condition met (regime={latest['regime']})"
+    else:
         ev = estimate_ev(symbol, float(latest["close"]), float(latest["sl_distance"]))
         print(f"EV check: win_rate={ev.win_rate:.1%} expected_move={ev.expected_move_pct:+.3f}% "
               f"trading_cost={-ev.trading_cost_pct:.3f}% ev={ev.ev_r:+.3f}R -> "
@@ -114,6 +127,8 @@ def run_symbol_cycle(exchange, public_exchange, engine, markets, symbol, config,
         if not ev.passes_gate:
             latest = latest.copy()
             latest["action"] = "NO_TRADE"
+            no_trade_decision = "REJECTED"
+            no_trade_reason = f"EV gate: ev={ev.ev_r:+.3f}R < {EV_THRESHOLD_R:.3f}R"
 
     # §19 early-warning: check the last WINRATE_WINDOW closed trades FOR THIS
     # SYMBOL before sizing — a win rate this low showed up in the 2023-H2
@@ -131,11 +146,18 @@ def run_symbol_cycle(exchange, public_exchange, engine, markets, symbol, config,
         engine, symbol, "M15", latest["action"], latest["regime"],
         float(latest["sl_price"]) if latest["action"] != "NO_TRADE" else None,
         float(latest["tp_price"]) if latest["action"] != "NO_TRADE" else None,
-        risk_pct, ev=ev,
+        risk_pct, ev=ev, decision=no_trade_decision, decision_reason=no_trade_reason,
     )
 
     if latest["action"] == "NO_TRADE":
-        print("No trade this cycle.")
+        print(f"No trade this cycle — {no_trade_reason}")
+        if no_trade_decision == "REJECTED":
+            streak = consecutive_ev_gate_rejections(engine, symbol)
+            print(f"EV gate has now rejected {streak} consecutive {symbol} setup(s).")
+            # fire once, on the cycle that crosses the line — re-alerting every
+            # 15 min afterwards would train us to ignore it
+            if streak == EV_GATE_ALERT_STREAK:
+                alert_gate_blocked(symbol, streak, streak * 0.25, ev.ev_r, EV_THRESHOLD_R)
         return
 
     balance = exchange.fetch_balance()

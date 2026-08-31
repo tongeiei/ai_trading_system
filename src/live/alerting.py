@@ -65,3 +65,21 @@ def alert_critical(message: str) -> bool:
 
 def alert_error(message: str) -> bool:
     return _send(f"⚠️ ERROR — {message}")
+
+
+def alert_gate_blocked(symbol: str, rejections: int, hours: float, worst_ev_r: float,
+                        threshold_r: float) -> bool:
+    """Sent when the EV gate has rejected every setup for a long stretch.
+
+    Silence is the failure mode this catches: a strategy whose edge no longer
+    clears the gate produces exactly the same log output as a quiet market
+    (NO_TRADE, every cycle, forever). Without this the first symptom is
+    noticing weeks later that nothing traded.
+    """
+    return _send(
+        f"🔇 NO TRADES — {symbol}\n"
+        f"EV gate rejected {rejections} consecutive setups (~{hours:.0f}h). "
+        f"Latest ev={worst_ev_r:+.3f}R vs gate {threshold_r:.2f}R.\n"
+        f"The gate is working; the edge is below it. This needs research, "
+        f"not a threshold change."
+    )

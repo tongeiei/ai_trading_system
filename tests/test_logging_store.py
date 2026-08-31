@@ -1,7 +1,10 @@
 from sqlalchemy import select
 
 from src.data.db import init_db, signals, risk_decisions, orders, trades
-from src.live.logging_store import log_signal, log_risk_decision, log_order, log_trade_open, log_trade_close
+from src.live.logging_store import (
+    log_signal, log_risk_decision, log_order, log_trade_open, log_trade_close,
+    consecutive_ev_gate_rejections,
+)
 
 
 def make_test_engine(tmp_path):
@@ -77,3 +80,51 @@ def test_recent_closed_r_multiples_filters_by_symbol_ordered(tmp_path):
 
     assert recent_closed_r_multiples(engine, "ETH/USDT:USDT") == [2.0, -1.0]
     assert recent_closed_r_multiples(engine, "XRP/USDT:USDT") == [2.0]
+
+
+def test_log_signal_records_no_trade_reason(tmp_path):
+    """A NO_TRADE row must say WHY. 'no setup' and 'setup rejected by the EV
+    gate' are operationally very different — one is a quiet market, the other
+    means the strategy is structurally unable to trade — and before this they
+    were indistinguishable in the DB (both just action=NO_TRADE, decision=None).
+    """
+    engine = make_test_engine(tmp_path)
+    no_setup = log_signal(engine, "ETH/USDT:USDT", "M15", "NO_TRADE", "RANGE", None, None, 0.005,
+                          decision="NO_SETUP", decision_reason="v0_rules: no entry condition met")
+    gated = log_signal(engine, "ETH/USDT:USDT", "M15", "NO_TRADE", "TREND", None, None, 0.005,
+                       decision="REJECTED", decision_reason="EV gate: ev=+0.004R < 0.150R")
+
+    with engine.connect() as conn:
+        rows = {r.signal_id: r for r in conn.execute(select(signals)).fetchall()}
+    assert rows[no_setup].decision == "NO_SETUP"
+    assert rows[gated].decision == "REJECTED"
+    assert "EV gate" in rows[gated].decision_reason
+
+
+def test_consecutive_ev_gate_rejections_counts_only_since_last_trade(tmp_path):
+    engine = make_test_engine(tmp_path)
+    for _ in range(3):
+        log_signal(engine, "ETH/USDT:USDT", "M15", "NO_TRADE", "TREND", None, None, 0.005,
+                   decision="REJECTED", decision_reason="EV gate: ev=+0.004R < 0.150R")
+    # a NO_SETUP bar in between must not reset the streak — it is not a rejected setup
+    log_signal(engine, "ETH/USDT:USDT", "M15", "NO_TRADE", "RANGE", None, None, 0.005,
+               decision="NO_SETUP", decision_reason="v0_rules: no entry condition met")
+    # another symbol's rejections must not leak into this symbol's count
+    log_signal(engine, "XRP/USDT:USDT", "M15", "NO_TRADE", "TREND", None, None, 0.0025,
+               decision="REJECTED", decision_reason="EV gate: ev=+0.010R < 0.150R")
+
+    assert consecutive_ev_gate_rejections(engine, "ETH/USDT:USDT") == 3
+    assert consecutive_ev_gate_rejections(engine, "XRP/USDT:USDT") == 1
+
+
+def test_consecutive_ev_gate_rejections_resets_after_an_accepted_signal(tmp_path):
+    engine = make_test_engine(tmp_path)
+    for _ in range(2):
+        log_signal(engine, "ETH/USDT:USDT", "M15", "NO_TRADE", "TREND", None, None, 0.005,
+                   decision="REJECTED", decision_reason="EV gate: ev=+0.004R < 0.150R")
+    taken = log_signal(engine, "ETH/USDT:USDT", "M15", "LONG", "TREND", 2400.0, 2600.0, 0.005)
+    log_risk_decision(engine, taken, accepted=True, computed_qty=0.05, equity_at_decision=10_000)
+    log_signal(engine, "ETH/USDT:USDT", "M15", "NO_TRADE", "TREND", None, None, 0.005,
+               decision="REJECTED", decision_reason="EV gate: ev=+0.004R < 0.150R")
+
+    assert consecutive_ev_gate_rejections(engine, "ETH/USDT:USDT") == 1

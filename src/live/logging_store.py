@@ -7,7 +7,7 @@ what was attempted — critical for reconciliation after a crash (§19).
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, text
 from sqlalchemy.engine import Engine
 
 from src.data.db import signals, risk_decisions, orders, trades
@@ -17,21 +17,61 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+EV_GATE_REJECTION = "REJECTED"
+NO_SETUP = "NO_SETUP"
+EV_GATE_REASON_PREFIX = "EV gate:"
+
+
 def log_signal(engine: Engine, symbol: str, timeframe: str, action: str, regime: str,
                 sl_price: float, tp_price: float, risk_pct: float, model_version: str = "v0_rules",
-                ev: "EVEstimate | None" = None) -> str:
+                ev: "EVEstimate | None" = None, decision: str | None = None,
+                decision_reason: str | None = None) -> str:
+    """decision/decision_reason let a NO_TRADE row say WHY it was a NO_TRADE.
+
+    Leave both None for a signal that goes on to the risk/execution path —
+    log_risk_decision fills them in there. Pass them only for the terminal
+    NO_TRADE cases, where nothing downstream will ever set them and the row
+    would otherwise be indistinguishable from any other quiet bar.
+    """
     signal_id = str(uuid.uuid4())
     with engine.begin() as conn:
         conn.execute(insert(signals).values(
             signal_id=signal_id, created_at_utc=now_utc(), symbol=symbol, timeframe=timeframe,
             action=action, regime=regime, suggested_sl=sl_price, suggested_tp=tp_price,
-            suggested_risk_pct=risk_pct, model_version=model_version, decision=None, decision_reason=None,
+            suggested_risk_pct=risk_pct, model_version=model_version, decision=decision, decision_reason=decision_reason,
             est_win_rate=ev.win_rate if ev else None,
             expected_move_pct=ev.expected_move_pct if ev else None,
             trading_cost_pct=ev.trading_cost_pct if ev else None,
             ev_r=ev.ev_r if ev else None,
         ))
     return signal_id
+
+
+def consecutive_ev_gate_rejections(engine: Engine, symbol: str) -> int:
+    """How many EV-gate rejections for this symbol since the last ACCEPTED signal.
+
+    Exists because a gate-rejected setup and an ordinary quiet bar both surface
+    as "NO_TRADE" in the log, so a strategy that has become structurally unable
+    to clear the gate looks exactly like a slow market — which is how a week of
+    zero trades went unnoticed (docs/research/BTC_EDGE_SEARCH.md Round 6
+    addendum). NO_SETUP rows are skipped rather than treated as a reset: they
+    are not rejected setups, so they say nothing about whether the gate is
+    passable.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(signals.c.decision, signals.c.decision_reason)
+            .where(signals.c.symbol == symbol)
+            .order_by(signals.c.created_at_utc.desc(), text("rowid DESC"))
+        ).fetchall()
+
+    count = 0
+    for row in rows:
+        if row.decision == "ACCEPTED":
+            break
+        if row.decision == EV_GATE_REJECTION and (row.decision_reason or "").startswith(EV_GATE_REASON_PREFIX):
+            count += 1
+    return count
 
 
 def log_risk_decision(engine: Engine, signal_id: str, accepted: bool, computed_qty: float,
