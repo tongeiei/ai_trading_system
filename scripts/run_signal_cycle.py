@@ -107,7 +107,7 @@ def run_symbol_cycle(exchange, public_exchange, engine, markets, symbol, config,
     ev = None
     original_action = latest["action"]
     if original_action != "NO_TRADE":
-        ev = estimate_ev(float(latest["close"]), float(latest["sl_distance"]))
+        ev = estimate_ev(symbol, float(latest["close"]), float(latest["sl_distance"]))
         print(f"EV check: win_rate={ev.win_rate:.1%} expected_move={ev.expected_move_pct:+.3f}% "
               f"trading_cost={-ev.trading_cost_pct:.3f}% ev={ev.ev_r:+.3f}R -> "
               f"{'PASS' if ev.passes_gate else 'REJECTED (cost > edge)'}")
