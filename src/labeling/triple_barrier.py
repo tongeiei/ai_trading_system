@@ -67,9 +67,12 @@ def _result(label, exit_time, exit_price_barrier, exit_reason, exit_price, entry
     }
 
 
-def label_all_signals(signals: pd.DataFrame, m1: pd.DataFrame) -> pd.DataFrame:
+def label_all_signals(signals: pd.DataFrame, m1: pd.DataFrame, max_hold_bars: int = MAX_HOLD_BARS_M1) -> pd.DataFrame:
     """signals: output of generate_v0_signals filtered to action != NO_TRADE.
     m1: full M1 OHLC history, sorted by time_utc.
+    max_hold_bars: timeout barrier in M1 bars, defaults to the live 12h value.
+    Overridable for research (e.g. docs/research/ETH_PHASE7_HOLD_PLAN.md) —
+    does not change live behavior since the default is unchanged.
 
     Uses binary search (np.searchsorted) to slice each signal's forward
     window instead of re-scanning the full M1 frame per signal — with 1.5M+
@@ -83,7 +86,7 @@ def label_all_signals(signals: pd.DataFrame, m1: pd.DataFrame) -> pd.DataFrame:
     for _, sig in signals.iterrows():
         entry_time = sig["time_utc"]
         start_idx = m1_times.searchsorted(entry_time, side="right")
-        end_idx = min(start_idx + MAX_HOLD_BARS_M1, len(m1))
+        end_idx = min(start_idx + max_hold_bars, len(m1))
         window = m1.iloc[start_idx:end_idx]
 
         res = _label_from_window(
