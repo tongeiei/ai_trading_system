@@ -229,8 +229,8 @@ ccxt มองไม่เห็น (`fetch_open_algo_orders`)
 | Macro features (DXY/US10Y/real yield/calendar) | มีแค่ `DXY_daily` | **NEW** | ไม่มี US10Y, real yield, economic calendar |
 | Regime Detection | `regime/rules.py` (2 class) | **MODIFY** | ต้องได้ TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist `regime_confidence/features/timestamp` (ตอนนี้คืน Series เปล่า ไม่เก็บลง DB) |
 | Setup Scanner (7 แบบ) | 8 gold strategies (falsified) + `v0_rules` | **NEW** | ต้องมี registry + status lifecycle (RESEARCH→…→LIVE/REJECTED) |
-| Fast AI Agent (Haiku-class) | — | **NEW** | ไม่มีอะไรเลย |
-| Strong AI Agent (Sonnet-class) | — | **NEW** | ไม่มีอะไรเลย |
+| ~~Fast AI Agent (Haiku-class)~~ | — | **ตัดทิ้ง** | งาน screening ทำโดย Setup Scanner + 6 คอลัมน์ deterministic แล้ว — ดู §16.8 ก |
+| Strong AI Agent | — | **NEW** | ไม่มีอะไรเลย — เหลือ LLM จุดเดียวในระบบ (Macro + veto + thesis), provider ดู §16.8 |
 | Research Agent (Opus-class) | `.claude/agents/*.md` + research scripts | **MODIFY** | มี persona + harness แล้ว ขาดแค่การเชื่อมเป็น loop |
 | Risk Engine | `risk/sizing.py` + `guards.py` + EV gate | **MODIFY (ใหญ่)** | ขาด daily loss / max DD / consecutive losses / simultaneous risk / kill switch / news block |
 | Execution Engine (MT5) | `order_executor.py` (Binance) | **REPLACE + abstraction** | ไม่มี MT5, ไม่มี pending order, trailing stop, partial close, duplicate-order protection แบบชัดเจน |
@@ -278,7 +278,7 @@ src/regime/engine.py
 src/scanner/__init__.py              src/scanner/registry.py      src/scanner/setups/*.py
 src/ai/__init__.py                   src/ai/client.py             src/ai/monitor_agent.py
 src/ai/analyst_agent.py              src/ai/schemas.py            src/ai/fallback.py
-src/ai/scorecard.py                  src/ai/macro_agent.py        (ดู §16)
+src/ai/scorecard.py                  src/ai/macro_agent.py        src/ai/provider.py  (ดู §16)
 src/risk/engine.py                   src/risk/limits.py           src/risk/kill_switch.py
 src/execution/broker.py (interface)  src/execution/mt5_adapter.py
 src/execution/binance_adapter.py (ย้ายของเดิมมา)
@@ -540,6 +540,57 @@ Macro 10% + ที่เหลือ 15% เท่ากัน → 78.15   ← �
    ดีขึ้นจริงหรือไม่ เทียบกับ 6 ช่อง deterministic ล้วน
 4. **Fail-safe**: LLM ใช้ไม่ได้ → `Macro = null` → NO NEW TRADE (§17) ไม่ใช่เดาค่ากลางแล้วเทรดต่อ
 5. ทุกช่อง + Final + เหตุผล veto ถูกเขียนลง journal **แม้เป็น NO_TRADE** (§14)
+
+### 16.8 Model / provider choice (ตัดสินใจ 2026-09-01)
+
+**ก) ตัด Agent 1 (Market Monitor) ทิ้ง** — §6 เดิมวาง 2 agent (fast screen → strong analyst)
+แต่ในสถาปัตยกรรม §16.2 งานของ Agent 1 คือ "setup screening" ซึ่ง Setup Scanner (P5) +
+6 คอลัมน์ deterministic ทำไปหมดแล้ว การเอา LLM กรองก่อน LLM อีกตัวทั้งที่ deterministic
+layer กรองไปแล้ว = filter ซ้อน filter → **LLM แตะระบบจุดเดียว** (Macro + veto + thesis)
+ลดพื้นที่ของ R-3 ไปในตัว
+
+**ข) ไม่ใช้ Claude สำหรับ layer นี้** — เหตุผลจากผู้ใช้: สงวน Claude ไว้ให้งานหลัก
+project นี้เป็น project เสริม
+
+> บันทึกข้อเท็จจริงไว้เพื่อการทบทวนภายหลัง: Claude Code subscription (เครื่องมือ dev)
+> กับ Anthropic API key (runtime call) เป็นคนละ billing กัน — runtime call ไม่กินโควตา
+> Claude Code ผู้ใช้ทราบและยืนยันการตัดสินใจนี้บนฐานการจัดสรรงบรวม ไม่ใช่ความเข้าใจผิด
+
+**ค) Provider: Gemini (Flash tier)** — เลือกเพราะตรงกับโจทย์ "project เสริม ไม่กินงบ":
+free tier ครอบ volume ระดับนี้ได้ และมี structured output แบบ JSON schema เป็น first-class
+ซึ่งเป็นข้อกำหนดเดียวที่เข้มจริงของ layer นี้
+ทางเลือกรอง: **OpenAI** ถ้าเปิดบัญชีสำหรับ Codex (ที่นั่ง Skeptic ตาม §15 ข้อ 5) อยู่แล้ว
+→ ผูก vendor เพิ่มเจ้าเดียวแทนสองเจ้า
+
+**ง) ต้นทุนจริงที่ประเมินไว้** (5,000 in / 1,000 out tokens ต่อ call):
+
+| | เรียกเฉพาะตอนมี setup (~100 call/ด.) | worst case ทุกแท่ง M5 ในหน้าต่าง (~3,700 call/ด.) |
+|---|---|---|
+| tier ถูก (Gemini Flash / Haiku-class) | ~$0–1 | ~$37 |
+| tier กลาง (Sonnet-class) | ~$2 | ~$74 |
+| tier บน (Opus-class) | ~$5 | ~$185 |
+
+**บรรทัดซ้ายคือของจริง** — §6 ให้เรียกเฉพาะตอน setup detected/regime changed ส่วนต่าง
+ระหว่างเจ้าแพงสุดกับถูกสุดจึงเป็นหลักดอลลาร์ต่อเดือน **"ประหยัด" ไม่ใช่เหตุผลเชิงเทคนิค
+ที่มีน้ำหนักในการเลือก provider ที่นี่** — เหตุผลที่บันทึกไว้คือการจัดสรรงบข้ามโปรเจกต์
+
+**จ) 4 หลักการที่ใช้ได้กับทุก provider** (ต้องมีครบไม่ว่าเลือกเจ้าไหน):
+1. **Structured output ต้อง validate จริงด้วย JSON schema** ไม่ใช่ parse เอาเองแล้วภาวนา
+2. **provider + model id อยู่ใน `config/xau.yaml`** ไม่ใช่ในโค้ด — `src/ai/macro_agent.py`
+   เป็น interface การเปลี่ยนเจ้าต้องเป็นการแก้ config ไม่ใช่ refactor
+3. **Fail-safe ครอบทุกทาง**: exception / timeout / refusal / schema ไม่ผ่าน → `Macro = null`
+   → **NO NEW TRADE** (§17) ห้ามเดาค่ากลางแล้วเทรดต่อ
+4. **เริ่มที่ reasoning effort ต่ำแล้ววัด** — งานให้คะแนนที่มีขอบเขตชัดมักไม่ต้องใช้ effort สูง
+   เป็น cost lever ที่ปรับได้โดยไม่เปลี่ยน provider
+
+**ฉ) การตัดสินใจนี้ reversible** — ด้วยข้อ (จ)2 การสลับ provider คือแก้ config 2 บรรทัด
+จึง**ห้ามให้เรื่องนี้บล็อก P2** เลือกไว้ก่อนแล้วทบทวนเมื่อ A/B ใน §16.6.3 มีข้อมูลจริง
+
+**ช) เกณฑ์ที่จะทำให้ทบทวน** (เขียนล่วงหน้ากันการเปลี่ยนใจแบบไร้เกณฑ์):
+- ค่าใช้จ่ายจริงเกินเพดาน → ลด effort ก่อน แล้วค่อยลดชั้นโมเดล
+- structured output ไม่ผ่าน schema บ่อยจนต้อง retry เป็นประจำ → เปลี่ยน provider
+- **A/B (§16.6.3) บอกว่าคอลัมน์ Macro ไม่เพิ่ม separation → ลบ LLM layer ทิ้งทั้งก้อน
+  ไม่ใช่ไปหา provider ที่ถูกกว่า** ถ้ามันไม่ช่วย เจ้าที่ถูกกว่าก็ไม่ช่วยเหมือนกัน
 
 ### 16.7 ไฟล์ที่ต้องสร้าง (เพิ่มเข้า §9)
 
