@@ -18,7 +18,10 @@ venv/
 *.parquet
 *.db
 *.sqlite
-artifacts/
+# root-level build artifacts ONLY. Must not be a bare `artifacts/`: that also
+# swallowed docs/research/artifacts/, which holds the raw evidence behind every
+# FALSIFIED verdict in GOLD_HANDOFF.md — 23 files that had never been committed.
+/artifacts/
 data/raw/
 data/processed/
 

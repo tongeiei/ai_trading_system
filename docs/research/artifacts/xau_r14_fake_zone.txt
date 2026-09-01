@@ -1,0 +1,75 @@
+cost (bps/side, base): spread=1.5 slip=1.0 comm=0.0 (no funding, spot)
+########## FULL DEV-window GRID (2006-01-01 .. 2018-12-31) ##########
+[dev] m15=324,344 h1=82,009 m1=4,664,636
+
+  w  bbrk   N    tp   dir |     n   win%    meanR     PF     totR  folds+  foldsN GATE
+  3  0.25   1   1.0  both |  4183  57.5  -0.2253   0.59   -942.6      4%      52 fail
+  3  0.25   1   1.0  long |  2171  57.2  -0.2343   0.58   -508.6     10%      52 fail
+  3  0.25   1   1.5  both |  4183  45.9  -0.3060   0.60  -1279.9      6%      52 fail
+  3  0.25   1   1.5  long |  2171  44.4  -0.3281   0.58   -712.3      8%      52 fail
+  3  0.25   1   2.0  both |  4183  37.2  -0.3598   0.60  -1505.1      6%      52 fail
+  3  0.25   1   2.0  long |  2171  36.0  -0.3765   0.59   -817.4     12%      52 fail
+  3  0.25   3   1.0  both |  7788  54.6  -0.2407   0.58  -1874.9      0%      52 fail
+  3  0.25   3   1.0  long |  3983  54.1  -0.2513   0.57  -1000.8      6%      52 fail
+  3  0.25   3   1.5  both |  7788  44.2  -0.2828   0.62  -2202.6      4%      52 fail
+  3  0.25   3   1.5  long |  3983  43.2  -0.2976   0.61  -1185.4      6%      52 fail
+  3  0.25   3   2.0  both |  7788  36.7  -0.3209   0.63  -2498.9      4%      52 fail
+  3  0.25   3   2.0  long |  3983  35.9  -0.3349   0.61  -1334.0     10%      52 fail
+  3   0.5   1   1.0  both |  2099  54.5  -0.2445   0.59   -513.3      8%      52 fail
+  3   0.5   1   1.0  long |  1083  53.7  -0.2562   0.58   -277.4      6%      31 fail
+  3   0.5   1   1.5  both |  2099  42.0  -0.3105   0.60   -651.7     10%      52 fail
+  3   0.5   1   1.5  long |  1083  40.1  -0.3513   0.56   -380.4      3%      31 fail
+  3   0.5   1   2.0  both |  2099  34.3  -0.3515   0.60   -737.9     12%      52 fail
+  3   0.5   1   2.0  long |  1083  33.1  -0.3731   0.58   -404.1      3%      31 fail
+  3   0.5   3   1.0  both |  5289  52.7  -0.2306   0.61  -1219.4      0%      52 fail
+  3   0.5   3   1.0  long |  2748  52.7  -0.2271   0.62   -624.2     10%      52 fail
+  3   0.5   3   1.5  both |  5289  42.1  -0.2547   0.65  -1347.0      6%      52 fail
+  3   0.5   3   1.5  long |  2748  42.0  -0.2560   0.65   -703.4     12%      52 fail
+  3   0.5   3   2.0  both |  5289  35.6  -0.2804   0.65  -1483.1      4%      52 fail
+  3   0.5   3   2.0  long |  2748  35.7  -0.2732   0.66   -750.8     10%      52 fail
+  5  0.25   1   1.0  both |  2913  58.8  -0.1765   0.66   -514.2     17%      52 fail
+  5  0.25   1   1.0  long |  1532  58.3  -0.1922   0.64   -294.4     18%      49 fail
+  5  0.25   1   1.5  both |  2913  47.4  -0.2464   0.66   -717.8     12%      52 fail
+  5  0.25   1   1.5  long |  1532  44.5  -0.2988   0.61   -457.8     12%      49 fail
+  5  0.25   1   2.0  both |  2913  38.4  -0.3046   0.65   -887.3     13%      52 fail
+  5  0.25   1   2.0  long |  1532  35.8  -0.3594   0.60   -550.7     12%      49 fail
+  5  0.25   3   1.0  both |  5241  55.3  -0.2120   0.62  -1111.2      6%      52 fail
+  5  0.25   3   1.0  long |  2712  54.7  -0.2226   0.61   -603.6     10%      52 fail
+  5  0.25   3   1.5  both |  5241  45.0  -0.2468   0.66  -1293.5      6%      52 fail
+  5  0.25   3   1.5  long |  2712  43.3  -0.2780   0.63   -754.0     12%      52 fail
+  5  0.25   3   2.0  both |  5241  37.7  -0.2778   0.67  -1456.1     10%      52 fail
+  5  0.25   3   2.0  long |  2712  36.4  -0.3061   0.64   -830.1     12%      52 fail
+  5   0.5   1   1.0  both |  1537  55.6  -0.2062   0.64   -316.9     17%      48 fail
+  5   0.5   1   1.0  long |   836  53.9  -0.2351   0.60   -196.5      6%      16 fail
+  5   0.5   1   1.5  both |  1537  42.6  -0.2798   0.63   -430.0     12%      48 fail
+  5   0.5   1   1.5  long |   836  39.8  -0.3434   0.56   -287.1      6%      16 fail
+  5   0.5   1   2.0  both |  1537  34.7  -0.3267   0.62   -502.2     10%      48 fail
+  5   0.5   1   2.0  long |   836  32.3  -0.3834   0.57   -320.5      6%      16 fail
+  5   0.5   3   1.0  both |  3748  52.2  -0.2319   0.61   -869.3      2%      52 fail
+  5   0.5   3   1.0  long |  1971  52.4  -0.2250   0.62   -443.5      8%      52 fail
+  5   0.5   3   1.5  both |  3748  41.9  -0.2542   0.65   -952.9      6%      52 fail
+  5   0.5   3   1.5  long |  1971  41.7  -0.2615   0.64   -515.4     12%      52 fail
+  5   0.5   3   2.0  both |  3748  35.5  -0.2796   0.65  -1048.1      8%      52 fail
+  5   0.5   3   2.0  long |  1971  35.6  -0.2804   0.65   -552.6     15%      52 fail
+
+########## VERDICT ##########
+DEV gate (2006-01-01..2018-12-31, w x b_break x N x tp_r_mult x direction = 48 cells,
+gate PF>=1.10 & folds+>=60%): FAIL at EVERY cell.
+  PF range: 0.56 - 0.67 (best cell: w=3/b_break=0.5/N=3/tp=2.0/long, PF=0.66, but
+  folds+ only 10% -> not a lucky-PF-with-weak-folds anomaly, it's uniformly bad)
+  folds+ range: 0% - 18% (vs 60% gate) -- never remotely close
+  mean_r: NEGATIVE in all 48 cells (-0.177 to -0.383)
+  Coherent gradient, NOT a runaway/over-selective optimum: PF drifts smoothly with
+  w (pivot width) and b_break and shows no cell breaking away from the pack. No
+  "lucky corner" pattern. This is a clean, structurally negative result across the
+  whole pre-registered grid -- same texture as R11's uniform failure, worse than R8
+  (R8 at least had some PF>1 pockets in confirm-mode before failing net).
+
+Per pre-committed rule ("no config clears DEV gate -> report DEV-stage
+falsification directly, do not spend the holdout touch"): HOLDOUT and cost-stress
+were NOT run. Spending the one-shot 2019-2026 holdout touch on a hypothesis this
+uniformly negative in DEV would violate the sacred-holdout discipline for no
+informational gain.
+
+R14 = FALSIFIED at DEV gate (gate item 1), same category as R11. Case closed,
+no further coder time warranted absent a materially different confirmation logic.

@@ -1,0 +1,70 @@
+cost (bps/side, base): spread=1.5 slip=1.0 comm=0.0 (no funding, spot)
+[R2 HOLDOUT PLAN] frozen config §1: {'or_start_hour': 7, 'or_minutes': 60, 'fib_ratio': 0.618, 'tp_r_mult': 1.5, 'direction': 'long', 'cutoff_hour': 16}
+
+########## DEV (2006-01-01 .. 2018-12-31) ##########
+[dev] m15=324,344 h1=82,009 m1=4,664,636
+[dev] tradeable signals: 1,330
+
+-- DEV cost stress (config §1) --
+             DEV cfg1 [base] | n= 1330 win%= 69.2 meanR= 0.1549 PF=  1.33 totR=   206.1 folds+= 63.3% folds_counted= 49 GATE=PASS
+               DEV cfg1 [2x] | n= 1330 win%= 51.4 meanR=-0.4552 PF=  0.39 totR=  -605.4 folds+= 16.3% folds_counted= 49 GATE=fail
+               DEV cfg1 [3x] | n= 1330 win%= 29.0 meanR=-1.0653 PF=  0.11 totR= -1416.8 folds+=  8.2% folds_counted= 49 GATE=fail
+
+########## DEV sensitivity grid (§4, base cost) ##########
+ or   fib   tp   dir |     n   win%    meanR     PF     totR  folds+  foldsN GATE
+ 30   0.5  1.0  long |  1729  70.9   0.0057   1.02      9.8     50%      52 fail
+ 30   0.5  1.0  both |  2331  71.3   0.0058   1.02     13.4     52%      52 fail
+ 30   0.5  1.5  long |  1729  63.8  -0.0021   1.00     -3.7     42%      52 fail
+ 30   0.5  1.5  both |  2331  63.8   0.0096   1.02     22.4     52%      52 fail
+ 30   0.5  2.0  long |  1729  49.6  -0.1484   0.82   -256.6     23%      52 fail
+ 30   0.5  2.0  both |  2331  49.8  -0.1198   0.85   -279.3     35%      52 fail
+ 30 0.618  1.0  long |  1574  64.4  -0.0485   0.84    -76.4     43%      51 fail
+ 30 0.618  1.0  both |  2092  65.8  -0.0298   0.90    -62.3     44%      52 fail
+ 30 0.618  1.5  long |  1574  69.6   0.0738   1.17    116.1     59%      51 fail
+ 30 0.618  1.5  both |  2092  70.1   0.0955   1.22    199.9     54%      52 fail
+ 30 0.618  2.0  long |  1574  61.1   0.0429   1.06     67.6     49%      51 fail
+ 30 0.618  2.0  both |  2092  61.3   0.0683   1.10    142.9     56%      52 fail
+ 30  0.75  1.0  long |  1393  37.8  -0.4240   0.20   -590.7     14%      49 fail
+ 30  0.75  1.0  both |  1808  40.7  -0.3857   0.24   -697.4     17%      52 fail
+ 30  0.75  1.5  long |  1393  61.0  -0.1017   0.77   -141.7     39%      49 fail
+ 30  0.75  1.5  both |  1808  63.0  -0.0622   0.86   -112.4     52%      52 fail
+ 30  0.75  2.0  long |  1393  69.4   0.1302   1.26    181.3     59%      49 fail
+ 30  0.75  2.0  both |  1808  69.5   0.1425   1.28    257.6     54%      52 fail
+ 60   0.5  1.0  long |  1491  74.6   0.0835   1.25    124.5     63%      51 PASS
+ 60   0.5  1.0  both |  2234  74.4   0.0827   1.24    184.7     54%      52 fail
+ 60   0.5  1.5  long |  1491  58.6   0.0020   1.00      2.9     45%      51 fail
+ 60   0.5  1.5  both |  2234  57.6  -0.0097   0.98    -21.6     50%      52 fail
+ 60   0.5  2.0  long |  1491  46.3  -0.0766   0.90   -114.2     29%      51 fail
+ 60   0.5  2.0  both |  2234  45.0  -0.1004   0.87   -224.4     42%      52 fail
+ 60 0.618  1.0  long |  1330  77.5   0.1147   1.46    152.6     65%      49 PASS
+ 60 0.618  1.0  both |  1990  76.8   0.1153   1.44    229.4     69%      52 PASS
+ 60 0.618  1.5  long |  1330  69.2   0.1549   1.33    206.1     63%      49 PASS
+ 60 0.618  1.5  both |  1990  68.8   0.1589   1.33    316.2     71%      52 PASS
+ 60 0.618  2.0  long |  1330  54.7   0.0363   1.05     48.3     47%      49 fail
+ 60 0.618  2.0  both |  1990  53.8   0.0249   1.03     49.6     50%      52 fail
+ 60  0.75  1.0  long |  1116  59.6  -0.0920   0.70   -102.6     49%      35 fail
+ 60  0.75  1.0  both |  1656  61.7  -0.0673   0.77   -111.4     46%      52 fail
+ 60  0.75  1.5  long |  1116  75.9   0.2015   1.61    224.9     66%      35 PASS
+ 60  0.75  1.5  both |  1656  75.7   0.1978   1.58    327.6     63%      52 PASS
+ 60  0.75  2.0  long |  1116  73.4   0.3426   1.73    382.4     77%      35 PASS
+ 60  0.75  2.0  both |  1656  72.3   0.3240   1.65    536.6     73%      52 PASS
+
+########## HOLDOUT (2019-01-01 .. end of data) — SINGLE RUN, config §1 ONLY ##########
+[holdout] m15=180,816 h1=45,224 m1=2,710,437
+[holdout] tradeable signals: 845
+
+-- HOLDOUT cost stress (config §1) --
+         HOLDOUT cfg1 [base] | n=  845 win%= 67.3 meanR= 0.1109 PF=  1.23 totR=    93.7 folds+= 65.5% folds_counted= 29 GATE=PASS
+           HOLDOUT cfg1 [2x] | n=  845 win%= 50.2 meanR=-0.4824 PF=  0.36 totR=  -407.6 folds+=  6.9% folds_counted= 29 GATE=fail
+           HOLDOUT cfg1 [3x] | n=  845 win%= 27.3 meanR=-1.0756 PF=  0.09 totR=  -908.9 folds+=  0.0% folds_counted= 29 GATE=fail
+
+########## GATE CHECK (§6, pre-committed) ##########
+1. DEV harness gate (PF>=1.10 & folds+>=60%): PASS (PF=1.330 folds+=63.3%)
+2. Sensitivity plateau vs spike: see grid above — manual/verdict call in report text (neighbours of fib=0.618,tp=1.5,or=60,dir=long must not be all-negative; fib=0.75 must not keep improving without bound).
+3. HOLDOUT gate (PF>=1.10 & folds+>=55%, base cost): PASS (PF=1.2254178353650063 folds+=65.5%)
+4. HOLDOUT degradation (hold mean_r>=0 and >=60% of DEV mean_r): PASS (dev_mean_r=0.1549 hold_mean_r=0.11089432501050636)
+5. Cost stress survival at 2x (DEV & HOLDOUT PF>=1.10): FAIL (dev_2x_PF=0.39079660625014767 hold_2x_PF=0.3565839365694846)
+6. Sample size (holdout n>=200 & folds_counted>=8): PASS (n=845 folds_counted=29)
+
+=== VERDICT (mechanical gate items 1,3,4,5,6): FAIL ===
+NOTE: item 2 (plateau vs spike) requires reading the DEV sensitivity table above; not auto-scored here.

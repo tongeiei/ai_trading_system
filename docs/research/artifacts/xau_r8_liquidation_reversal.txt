@@ -1,0 +1,189 @@
+R8 — Post-liquidation reversal (capitulation fade), XAU/USD spot
+Plan: docs/research/R8_PLAN.md · Code: src/strategy/gold_r8_liquidation_reversal.py
+Runners: scripts/run_gold_r8_liquidation_reversal.py, scripts/run_gold_r8_holdout.py
+cost (bps/side, base): spread=1.5 slip=1.0 comm=0.0 (no funding, spot)
+
+=========================================================================
+0. HEADLINE
+=========================================================================
+R8 as specified (fade a capitulation m15 candle, WAIT up to M bars for an
+exhaustion confirm, enter at the confirm bar's close) is FALSIFIED. Every
+config tested — 3y smoke, full 20y baseline, a 13-cell parameter grid
+spanning the full pre-registered range (k_capit 2.0-3.0, tp_r_mult 1.0-2.0,
+M 1/3, direction both/long), the sacred DEV split, and the sacred HOLDOUT
+split — fails the gate decisively and coherently (PF 0.50-0.71 vs gate
+1.10, 5-21% folds positive vs gate 60%). There is no config anywhere near
+passing; this is not a borderline or single-unlucky-cell result.
+
+Critically, the §6(a) red-flag check required by the plan produced the
+opposite of the mechanism's prediction: a NAIVE baseline that fades the
+capitulation candle immediately (no exhaustion wait) is strong (PF 2.2-2.4,
+94-98% folds positive) while the pre-registered confirm-wait rule is not
+just weaker but actively lost the trade. Waiting for "exhaustion" makes
+things dramatically worse, not better — the opposite of what the mechanism
+story predicts. This is disqualifying on its own terms per the plan's own
+kill criterion (§6): the confirm logic must add edge over the naive
+baseline; instead it destroys an apparently-strong effect entirely.
+
+=========================================================================
+1. FULL-HISTORY BASELINE (20y, k=2.5, tp=1.5, M=3, dir=both — plan's
+   central config)
+=========================================================================
+                                    n     win%   meanR    PF     totR   folds+  GATE
+confirm-wait rule (registered)    6053   45.7  -0.2439  0.654  -1476.1   8%    FAIL
+naive fade (no confirm, §6a)      6782   78.2   0.3708  2.238   2514.7  94%    PASS(!)
+
+The naive/registered gap (PF 2.24 vs 0.65) is the single most important
+number in this report: the "wait for exhaustion" logic is the entire
+mechanism claim in R8_PLAN.md §1, and it is the thing that fails.
+
+=========================================================================
+2. DEV SENSITIVITY GRID (confirm-wait rule, §4 pre-registered grid,
+   base cost, full 20y for the smoke/baseline row + 13-cell targeted grid
+   spanning the corners/midpoints of the registered 3x3x2x2 space)
+=========================================================================
+   k   tp  M   dir |     n   win%    meanR     PF     totR  folds+ GATE
+ 2.0  1.0  1  both |  9972  51.3  -0.3061   0.50  -3052.7      6% fail
+ 2.0  1.0  1  long |  5168  51.1  -0.3056   0.51  -1579.2      9% fail
+ 2.0  1.0  3  both | 11662  51.6  -0.2908   0.52  -3391.2      5% fail
+ 2.0  1.0  3  long |  6209  51.6  -0.2847   0.53  -1767.8     10% fail
+ 2.0  1.5  1  both |  9972  45.4  -0.2897   0.60  -2888.8      5% fail
+ 2.5  1.0  1  both |  5247  52.7  -0.2687   0.55  -1410.1      7% fail
+ 2.5  1.0  3  both |  6053  52.5  -0.2637   0.55  -1596.2      7% fail
+ 2.5  1.5  1  both |  5247  46.2  -0.2443   0.65  -1281.8     12% fail
+ 2.5  1.5  3  both |  6053  45.7  -0.2439   0.65  -1476.1      8% fail  (= baseline row, §1)
+ 2.5  2.0  3  both |  6053  40.4  -0.2439   0.69  -1476.3     13% fail
+ 2.5  1.5  3  long |  3192  46.0  -0.2285   0.67   -729.3     19% fail
+ 3.0  1.0  3  both |  3391  52.4  -0.2586   0.56   -877.0     16% fail
+ 3.0  1.5  3  both |  3391  46.1  -0.2315   0.67   -785.0     10% fail
+ 3.0  2.0  3  both |  3391  40.6  -0.2301   0.71   -780.1     16% fail
+ 3.0  1.5  3  long |  1785  47.3  -0.1977   0.71   -352.9     21% fail
+
+Gradient reading: this IS a coherent gradient — but it is a coherent
+gradient of FAILURE, not the usual "in-sample winner vs weaker neighbours"
+shape we had to worry about with R2. PF creeps from ~0.50 (k=2.0, tp=1.0)
+up to ~0.71 (k=3.0, tp=2.0, or long-only) as k_capit/tp_r_mult/direction
+tighten the trade selection — i.e. tighter selection helps a little, same
+direction as the mechanism story predicts — but the entire surface sits
+far below the PF>=1.10 gate and the plateau is a plateau of loss. There is
+no config within this pre-registered grid that gets remotely close to
+passing; no runaway-optimum risk here because nothing is winning to chase.
+direction=long consistently has the best folds+ (up to 21%) of the grid
+but is still nowhere near the 60% gate.
+
+DEV split (2006-2018, frozen central config k=2.5/tp=1.5/M=3/both):
+                          n    win%   meanR     PF     totR  folds+  folds_cnt GATE
+DEV cfg [base]          3999   45.5  -0.2475  0.65   -989.6    9.6%    52     fail
+DEV cfg [2x cost]       3999   38.2  -0.7462  0.30  -2984.0    0.0%    52     fail
+DEV cfg [3x cost]       3999   31.5  -1.2449  0.15  -4978.4    0.0%    52     fail
+DEV naive baseline      4439   79.7   0.4025  2.36   1786.6   98.1%    52     PASS
+
+DEV per-year (base cost, confirm-wait rule):
+  year     n   win%    meanR     PF     totR
+  2006   141   49.6   0.0144   1.03      2.0
+  2007   191   49.7  -0.0575   0.90    -11.0
+  2008   362   45.3  -0.1681   0.76    -60.8
+  2009   304   46.4  -0.1521   0.77    -46.2
+  2010   332   46.1  -0.3568   0.56   -118.5
+  2011   376   43.6  -0.3694   0.55   -138.9
+  2012   357   44.0  -0.3122   0.59   -111.5
+  2013   345   46.7  -0.1500   0.77    -51.7
+  2014   329   48.0  -0.1592   0.75    -52.4
+  2015   349   46.1  -0.2232   0.68    -77.9
+  2016   309   47.2  -0.1800   0.73    -55.6
+  2017   328   40.9  -0.4344   0.47   -142.5
+  2018   276   41.3  -0.4515   0.44   -124.6
+
+Regime check (§6b): the rule loses money in EVERY single DEV year except a
+roughly break-even 2006 (the only year with n small enough / early history
+to land near PF~1). It is not concentrated in 2-3 bad years and does not
+spare the ranging years either — 2013-2016 (relatively range-bound gold)
+are all clearly negative (PF 0.68-0.77) same as the trending years
+(2010-2012, 2017-2018). So this is not "mean-reversion breaks only in
+trends" — it fails in every regime tested, which argues against there
+being a real, regime-dependent mechanism at all (as opposed to R2, whose
+failure mode was cost/sensitivity-specific).
+
+=========================================================================
+3. SACRED HOLDOUT (2019-01-01 .. 2026-08-27, config k=2.5/tp=1.5/M=3/both,
+   SINGLE RUN, no re-runs/tweaks — script: scripts/run_gold_r8_holdout.py)
+=========================================================================
+HOLDOUT cfg [base]  | n=2053 win%=46.1 meanR=-0.2375 PF=0.65 totR=-487.6 folds+=6.5% folds_counted=31 GATE=fail
+
+Holdout per-year (base cost):
+  year     n   win%    meanR     PF     totR
+  2019   334   42.5  -0.4727   0.43   -157.9
+  2020   241   50.6  -0.0673   0.89    -16.2
+  2021   313   44.4  -0.2452   0.64    -76.8
+  2022   248   48.8  -0.1660   0.73    -41.2
+  2023   306   42.8  -0.3676   0.51   -112.5
+  2024   263   49.4  -0.1497   0.76    -39.4
+  2025   212   48.1  -0.1217   0.80    -25.8
+  2026   136   44.1  -0.1316   0.79    -17.9
+
+Every holdout year is negative too (best is 2020 at PF 0.89, still a
+loser) — confirms the DEV picture, no degradation surprise because there
+was no DEV edge to degrade from.
+
+=========================================================================
+4. COST STRESS (base / 2x / 3x, DEV and HOLDOUT)
+=========================================================================
+                         base PF   2x PF   3x PF
+DEV                       0.65      0.30    0.15
+HOLDOUT                   0.65      0.28    0.13
+
+Already dead at base cost; 2x/3x are moot but reported for completeness —
+both make it substantially worse, as expected once a rule is already net-
+losing before costs are stressed.
+
+=========================================================================
+5. GATE CHECK (R8_PLAN.md §5, mechanical items)
+=========================================================================
+1. DEV harness gate (PF>=1.10 & folds+>=60%):        FAIL (PF=0.655, folds+=9.6%)
+2. Sensitivity plateau vs spike:                      N/A — no config approaches
+                                                       passing, so "plateau vs spike"
+                                                       doesn't apply; grid is
+                                                       coherent but uniformly failing.
+3. HOLDOUT gate (PF>=1.10 & folds+>=55%, base cost):  FAIL (PF=0.652, folds+=6.5%)
+4. HOLDOUT degradation (hold mean_r>=0 & >=60% dev):  FAIL (dev_mean_r=-0.2475,
+                                                       hold_mean_r=-0.2375, both negative)
+5. Cost stress survival at 2x (DEV & HOLDOUT):        FAIL (dev_2x_PF=0.30, hold_2x_PF=0.28)
+6. Sample size (holdout n>=200 & folds_counted>=8):   PASS (n=2053, folds_counted=31)
+
+=========================================================================
+6. VERDICT
+=========================================================================
+R8 (post-liquidation reversal, confirm-wait rule as specified in
+R8_PLAN.md §2) = FAIL. Falsified on gate items 1, 3, 4, 5 (only item 6,
+sample size, passes — irrelevant once 1/3/4/5 fail). This mirrors R1's
+outcome (fails everywhere, clean negative result) rather than R2's
+(passed gates in-sample/holdout but broke under cost stress + runaway
+optimum) — R8 never got close to passing anything.
+
+Mechanism note for the backlog: the strongest single finding in this run
+is NOT the falsification of the confirm-wait rule per se, but that an
+un-registered, un-validated "fade the capitulation candle immediately"
+baseline shows a large, consistent, multi-decade edge (PF 2.2-2.4, 94-98%
+folds positive, both on the DEV split and full 20y) while the version that
+"waits for exhaustion" — the whole mechanism story in §1 — kills it. Two
+readings are possible and neither has been tested here: (a) genuine
+knife-catching artifact (the R8_PLAN's own explicitly-named risk in §6:
+"just knife-catching with extra steps" — except here it's knife-catching
+WITHOUT extra steps that looks good, which is the more alarming version of
+that risk, not the less alarming one), possibly inflated by SL/TP placed
+very close to entry (tight sl_distance from close_frac<=0.35 construction)
+interacting with same-bar-ambiguity or quantization in the M1 labeling; or
+(b) a real, different edge (pure fade-the-big-red-candle, no confirm) that
+was never pre-registered or holdout-tested and must NOT be treated as
+validated — it has not been through sensitivity, holdout, or cost-stress
+review, and the a-priori mechanism story for it ("who is forced to pay")
+is weaker/different from what R8_PLAN.md registered (immediate fade is
+closer to "buying the exact bottom of a crash," which the plan explicitly
+warned against fading without a confirm filter). This finding should NOT
+be reported as an edge; it is a new, unregistered candidate hypothesis
+that would need its OWN falsification plan (rule spec, param grid,
+sacred DEV/HOLDOUT split not yet touched, cost stress, look-ahead review)
+before being taken seriously — exactly the discipline R2 went through and
+failed. Flagging for the backlog, not claiming it.
+
+R8 (confirm-wait, as pre-registered) — CASE CLOSED, falsified.

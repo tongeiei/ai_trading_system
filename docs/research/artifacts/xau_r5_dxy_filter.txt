@@ -1,0 +1,31 @@
+cost (bps/side): spread=1.5 slip=1.0 comm=0.0 (no funding)
+DXY daily rows=5198 range=2006-01-03 05:00:00+00:00 .. 2026-08-27 04:00:00+00:00
+
+########## R5 smoke {'ma_len': 50, 'mode': 'regime_directional'} (start=None) ##########
+[gold] loading XAUUSD data (start=None end=None) ...
+[gold] m15=505,247 h1=127,254 m1=7,376,388
+[gold] signals: 5,293 tradeable of 5,346 bars
+
+=== GOLD BACKTEST REPORT ===
+trades=5293  win_rate=0.333  mean_r=-0.3236  PF=0.631
+total_r=-1712.7  max_dd_r=1734.7  boot_p=0.0
+WFO: folds=83 counted=82 frac_positive=0.06  GATE=FAIL (PF>=1.1, >=60% folds +)
+
+########## R5 DEV grid (sacred DEV window 2006-01-01..2018-12-31) ##########
+
+  ma                 mode |     n   win%    meanR     PF     totR folds  folds+ GATE
+  --          always_long |  3371  31.8  -0.3665   0.59  -1235.6    52      6% fail
+  --         always_short |  3371  37.9  -0.1843   0.77   -621.4    52     29% fail
+  20   regime_directional |  3349  35.1  -0.2662   0.69   -891.4    52      6% fail
+  20   regime_long_filter |  1655  32.3  -0.3509   0.60   -580.8    52     15% fail
+  20  regime_short_filter |  1694  37.9  -0.1833   0.78   -310.6    52     31% fail
+  50   regime_directional |  3318  33.9  -0.3045   0.65  -1010.4    52     10% fail
+  50   regime_long_filter |  1709  31.1  -0.3891   0.57   -665.0    49     11% fail
+  50  regime_short_filter |  1609  36.9  -0.2147   0.74   -345.4    51     26% fail
+ 100   regime_directional |  3267  34.4  -0.2932   0.66   -957.7    51     12% fail
+ 100   regime_long_filter |  1761  31.5  -0.3818   0.58   -672.3    45      6% fail
+ 100  regime_short_filter |  1506  37.9  -0.1895   0.77   -285.4    44     34% fail
+ 200   regime_directional |  3164  35.5  -0.2677   0.69   -846.9    49     18% fail
+ 200   regime_long_filter |  1659  32.0  -0.3757   0.58   -623.2    38     10% fail
+ 200  regime_short_filter |  1505  39.3  -0.1486   0.81   -223.7    32     33% fail
+  50 inverted_directional |  3318  35.7  -0.2520   0.70   -836.3    52     10% fail
