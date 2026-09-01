@@ -1,0 +1,34 @@
+# Gold (XAU/USD spot) backtest spec — SEPARATE from the ETH/crypto engine.
+#
+# XAU/USD spot is NOT a perp: there is NO funding rate. Cost = spread +
+# commission + slippage only. The numbers below are ASSUMPTIONS to be
+# tuned against a real broker feed before any result is trusted; gold
+# spreads widen sharply around news (NFP/CPI/FOMC) and in the thin Asian
+# session, so treat these as an OPTIMISTIC floor, not a promise.
+
+instrument: XAUUSD          # spot gold, Dukascopy history (~20y, 2006->present)
+quote_currency: USD
+has_funding: false          # spot — do NOT apply crypto-style funding costs
+
+data:
+  m1:  data/raw/XAUUSD_1m.parquet    # 7.4M rows — path resolution for triple-barrier
+  m15: data/raw/XAUUSD_15m.parquet   # 505k rows — signal timeframe
+  h1:  data/raw/XAUUSD_1h.parquet    # 127k rows — higher-timeframe context
+
+# --- Cost assumptions (round trip = entry + exit), all in basis points of price ---
+costs:
+  spread_bps_per_side: 1.5    # ~0.3 "points" on a $2000 price ~= 1.5 bps; retail XAUUSD is often wider
+  slippage_bps_per_side: 1.0  # market-order slippage beyond spread
+  commission_bps_per_side: 0.0 # many gold CFD accounts are spread-only; set >0 for commission accounts
+
+# --- Session hours (UTC). Reuses the same _session_for_hour buckets as the crypto engine. ---
+sessions:
+  high_liquidity: [LONDON, OVERLAP, NY]   # where gold has real volume
+  # Asian range = the quiet pre-London window, used as a breakout base (R3)
+
+# --- Walk-forward / validation gate (20y supports proper quarterly folds) ---
+validation:
+  fold_freq: Q                # quarterly out-of-sample folds
+  min_trades_per_fold: 20     # folds thinner than this are reported but not counted in the gate
+  gate_profit_factor: 1.10    # net PF must clear this...
+  gate_min_folds_positive: 0.60  # ...AND >=60% of folds must be net-positive
