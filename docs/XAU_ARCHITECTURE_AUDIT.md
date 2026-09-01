@@ -32,7 +32,7 @@ holdout, cost stress, บันทึกสิ่งที่ล้มเหล�
    daily loss limit / max drawdown / max consecutive losses / max simultaneous risk /
    kill switch **ยังไม่ได้ implement เลย** ทั้งที่ §11 ระบุเป็น default
    (ค) **live feed ของ XAU/USD ไม่มี** — Dukascopy ที่ใช้อยู่เป็น historical-only,
-   MT5 ยังไม่มีโค้ดสักบรรทัด
+   MT5 ยังไม่มีโค้ดสักบรรทัด (แต่ platform blocker ปิดแล้ว — ดู §15 ข้อ 2b)
 3. **ธงแดงที่บันทึกไว้ (ยกขึ้นแล้ว และผู้ใช้ตัดสินใจแล้ว)**: gold track ทดสอบสมมติฐาน
    ครบกระบวนการแล้ว **8 ตัว falsified ทั้ง 8** (R1, R2, R5, R8, R11, R14, R15, R17 — ดู
    `GOLD_HANDOFF.md` master table) ครอบคลุมทั้ง pure price-action pattern และ cross-asset
@@ -278,6 +278,7 @@ src/regime/engine.py
 src/scanner/__init__.py              src/scanner/registry.py      src/scanner/setups/*.py
 src/ai/__init__.py                   src/ai/client.py             src/ai/monitor_agent.py
 src/ai/analyst_agent.py              src/ai/schemas.py            src/ai/fallback.py
+src/ai/scorecard.py                  src/ai/macro_agent.py        (ดู §16)
 src/risk/engine.py                   src/risk/limits.py           src/risk/kill_switch.py
 src/execution/broker.py (interface)  src/execution/mt5_adapter.py
 src/execution/binance_adapter.py (ย้ายของเดิมมา)
@@ -347,7 +348,7 @@ config backup, secret management (ตอนนี้ `.env` ธรรมดา),
 | P0, P4, P9 | S | ต่อยอดของที่มี |
 | P2, P3, P5, P10, P11 | M | งานเยอะแต่ pattern ชัด |
 | P6 (AI), P7 (Risk), P12 | L | ตรรกะใหม่ + ต้องการ test หนัก |
-| P8 (MT5) | **XL** | ติด platform blocker ข้างบน |
+| P8 (MT5) | **L** | ลดจาก XL — platform blocker ปิดแล้ว เหลือแค่เลือก broker/บัญชี |
 
 
 ---
@@ -357,8 +358,8 @@ config backup, secret management (ตอนนี้ `.env` ธรรมดา),
 | # | ความเสี่ยง | ผลกระทบ | การรับมือ |
 |---|---|---|---|
 | R-1 | **8/8 hypotheses falsified** — อาจไม่มี edge ให้ execute | สูงสุด | ผู้ใช้เลือกสร้าง stack ให้ครบก่อน (2026-09-01) → รับความเสี่ยงนี้ไว้อย่างรู้ตัว; ลด exposure ด้วย P5 status lifecycle (ห้าม setup ที่ยังไม่ VALIDATED ขึ้น LIVE) + P11 WFO + P12 paper 4 สัปดาห์ |
-| R-2 | MT5 = Windows-only แต่ VPS = Linux ARM | สูง | ตัดสินใจ platform ก่อน P8 |
-| R-3 | **LLM กลายเป็นทางกลับเข้ามาของสิ่งที่เคยปฏิเสธ** (ML gate AUC 0.497) | สูง | LLM ต้อง log ทุก call + วัดผลแบบ A/B เทียบ "ไม่มี LLM" + ห้าม bypass Risk Engine |
+| R-2 | ~~MT5 = Windows-only แต่ VPS = Linux ARM~~ | **ปิดแล้ว** | ย้าย dev/deploy ไป PC Windows (2026-09-01) — ดู §15 ข้อ 2b |
+| R-3 | **LLM กลายเป็นทางกลับเข้ามาของสิ่งที่เคยปฏิเสธ** (ML gate AUC 0.497) — scorecard ที่จูนน้ำหนักด้วยมือคือรูปแบบเดียวกัน | สูง | §16.6: bucket test ก่อน, shadow mode, A/B ช่อง Macro, log ทุก call, LLM ลดคะแนนได้แต่เพิ่มไม่ได้, ห้าม bypass Risk Engine |
 | R-4 | Lot size ของ XAU บนบัญชีเล็ก (เหตุผลเดิมที่ pivot ออกจาก MT5 — PROJECT_PLAN §0.1) | สูง | ยืนยัน broker/ประเภทบัญชี/ทุน ก่อน P8 |
 | R-5 | Cost model ใน `gold_spec.yaml` เป็น "optimistic floor" | สูง | cost stress 2× ก่อนแตะ holdout เสมอ (บทเรียน R2) |
 | R-6 | ทำ XAU แล้วทำ ETH/XRP track พัง | กลาง | แยก module path + ไม่แตะ ETH cycle + test เดิมต้องเขียว |
@@ -374,6 +375,8 @@ config backup, secret management (ตอนนี้ `.env` ธรรมดา),
   ทุก feature ใหม่**, regime classification, risk limits ทุกข้อ (daily loss, DD, consecutive,
   simultaneous, kill switch), session/NFP window, AI schema validation + malformed-response
   handling, broker adapter (mock)
+- **ชั้น 1.5 — scorecard bucket test** (§16.6.1): คะแนนสูงต้องให้ mean R ดีกว่าคะแนนต่ำ
+  บน labeled trade ที่มีอยู่แล้ว มิฉะนั้น scorecard ไม่ผ่านไปเป็น gate
 - **ชั้น 2 — backtest**: reproduce ผล R1–R17 เดิมได้เท่าเดิมหลัง refactor (regression guard),
   walk-forward gate, cost stress 2×/3×, parameter sensitivity plateau check
 - **ชั้น 3 — engineering (demo/testnet)**: fault injection (broker down, AI down, data stale,
@@ -417,23 +420,151 @@ range) ซึ่งเป็นที่ที่ข่าว US (NFP/CPI/FOMC) 
 เหมือน ETH track** → §17 (Docker/restart policy/health check) ยังทำ แต่ target การ deploy
 คือเครื่องผู้ใช้ ไม่ใช่ Oracle VPS ต้องยืนยันข้อนี้ก่อน P10
 
-**2. Broker / MT5 = ยังไม่มีบัญชี ยังไม่ได้เลือก** → **P8 ยังไม่มี target platform**
-ผลกระทบ: `MetaTrader5` python package เป็น Windows-only (ใช้บน macOS/Linux ARM ไม่ได้)
-ก่อนถึง P8 ต้องมีเอกสารเปรียบเทียบ MT5-on-Windows vs broker REST API + ข้อมูล lot size /
-ประเภทบัญชี / ทุน (PROJECT_PLAN §0.1 เคยพบว่า lot ขั้นต่ำ XAU ทำให้ risk 1% เป็นไปไม่ได้
-บนทุนเล็ก — เป็นเหตุผลเดิมที่ pivot ออกจาก MT5) → ผมจะทำ `docs/XAU_BROKER_OPTIONS.md`
-ตอนใกล้ P8 ไม่ใช่ตอนนี้
+**2. Broker / MT5 = ยังไม่มีบัญชี ยังไม่ได้เลือก** → P8 ยังไม่มี broker แต่ **มี target
+platform แล้ว**
+
+**2b. ย้าย development ไปเครื่อง PC Windows (2026-09-01)** — ผลกระทบใหญ่และเป็นบวก:
+- **R-2 ตกไป**: `MetaTrader5` python package เป็น Windows-only ซึ่งเดิมชนกับ Oracle VPS
+  (Ubuntu ARM) และ dev Mac (macOS) บน Windows ใช้ได้ตรง ๆ → P8 เดินตามแผน MT5 เดิมได้
+  ไม่ต้องหา Wine/VM/REST fallback
+- **คำถาม deploy target ได้คำตอบ**: XAU track deploy บนเครื่อง PC ของผู้ใช้ (เปิดเครื่อง
+  รันเอง จ–ศ 08:00–22:00 เวลาไทย) **ไม่ใช่** Oracle VPS. ETH/XRP track ยังรันบน VPS ต่อไป
+  แยกกัน → §17 (Docker/restart policy/health check) ยังทำ แต่ scope เปลี่ยนเป็น
+  "เครื่องเดสก์ท็อปที่ปิดตอนกลางคืน" ซึ่งง่ายกว่า 24/7 uptime มาก
+- **ที่ยังเปิดอยู่**: broker ไหน / ประเภทบัญชี / ทุน — PROJECT_PLAN §0.1 เคยพบว่า lot
+  ขั้นต่ำของ XAU ทำให้ risk 1% เป็นไปไม่ได้บนทุนเล็ก (เหตุผลเดิมที่ pivot ออกจาก MT5)
+  **ข้อนี้ยังไม่หายไปพร้อม R-2** ยังต้องยืนยันก่อน P8
 
 **3. ลำดับ phase = ลำดับเดิม** ไม่แทรก Edge Gate (ดู §0 ข้อ 3 และ §10)
 
+**4. AI layer = Setup Quality Scorecard** (2026-09-01) → รายละเอียดเต็มใน §16
+
+**5. เลือกโมเดลสำหรับ agent team** (2026-09-01) — ตอบคำถาม DeepSeek vs Codex:
+- **Layer runtime (§6 Agent 1/2)**: call volume ต่ำเกินกว่าที่ราคาจะเป็นตัวตัดสิน —
+  หน้าต่าง 14 ชม. = 168 แท่ง M5/วัน ≈ 3,700 call/เดือน **ถ้าเรียกทุกแท่ง** แต่ §6 ให้เรียก
+  เฉพาะตอน setup detected/regime changed ซึ่งเหลือหลักหน่วยต่อวัน → เลือกที่ reliability
+  + คุณภาพ structured output ไม่ใช่ราคา คงตามที่ §6 ระบุไว้เดิม (fast/strong model)
+  Codex เป็น coding agent ไม่ใช่ endpoint สำหรับตอบ JSON ต่อสัญญาณ — ผิดประเภทสำหรับ layer นี้
+- **Layer dev/research (`.claude/agents/`)**: ใช้ Codex เป็น **ที่นั่ง Skeptic** (คนละ
+  model family กับตัวที่เขียน strategy/รัน backtest) เหตุผลคือ **correlated blind spot** —
+  `05_skeptic.md` มีหน้าที่หาเหตุผลว่าผลลัพธ์อาจเป็นภาพลวงตา ถ้าเป็นโมเดลตระกูลเดียวกับ
+  ผู้ผลิตงาน มันจะพลาดจุดเดียวกัน นี่คือตำแหน่งเดียวที่การใช้คนละ vendor คุ้มจริง
+- DeepSeek: พิจารณาเฉพาะ layer runtime ถ้าค่าใช้จ่ายกลายเป็นข้อจำกัดจริง ไม่เอาเข้า dev loop
+
 ### ยังเปิดอยู่ (ไม่ block P2 แต่ต้องตอบก่อน phase ที่ระบุ)
-- **ก่อน P6**: งบ LLM ต่อเดือน (กำหนดเพดานเพื่อออกแบบ call policy — R-7)
-- **ก่อน P6**: ETH/XRP track ที่รันอยู่บน VPS ให้รันต่อคู่ขนาน หรือ freeze?
-- **ก่อน P8**: ข้อ 2 ข้างบนทั้งชุด
-- **ก่อน P10**: deploy target = เครื่องผู้ใช้ หรือ VPS?
+- **ก่อน P6**: งบ LLM ต่อเดือน (เพดานสำหรับ call policy — R-7)
+- **ก่อน P6**: ETH/XRP track บน VPS ให้รันต่อคู่ขนาน หรือ freeze?
+- **ก่อน P8**: broker / ประเภทบัญชี / ทุน (ดูข้อ 2b)
 
-## 16. สถานะเอกสาร
+## 16. P6 Spec — AI Layer: Setup Quality Scorecard
 
-**ยังไม่ implement อะไรทั้งสิ้น** ตาม §21 ("อย่า implement ก่อนส่ง Architecture/GAP Analysis
-ให้ review") คำถาม blocking ใน §15 ได้คำตอบครบแล้ว (2026-09-01) — รอ review เอกสารนี้
-แล้วจึงเริ่ม P0 (git hygiene) ตามด้วย P2 (data pipeline)
+ข้อกำหนดจากผู้ใช้ 2026-09-01 พร้อมการตัดสินใจที่ตกลงกันแล้ว เขียนไว้ที่นี่เพื่อให้ P6
+มี spec ตั้งต้นที่ชัด ไม่ต้องออกแบบใหม่ตอนถึงเฟส
+
+### 16.1 รูปแบบ output
+
+```
+Setup Quality
+  Trend       82        Structure   76        Momentum    71
+  Volatility  88        Session     91        Macro       42
+  Risk        85
+  Final Score = 78
+```
+
+เหตุผลที่ใช้ scorecard แทน `confidence` ตัวเดียว: แต่ละมิติ **falsifiable แยกกันได้** —
+เวลาระบบขาดทุนเราตามได้ว่ามิติไหนให้คะแนนผิด ซึ่ง single score ทำไม่ได้
+
+### 16.2 ใครคำนวณช่องไหน (บังคับ — มาจาก §4/§7/§11 ของ TASK_NEW_WORLD.md)
+
+| มิติ | ผู้คำนวณ | แหล่งที่มา |
+|---|---|---|
+| Trend | **Python** | EMA20/50/200, ADX, H1 alignment (`f01`–`f04`) |
+| Structure | **Python** | swing/BOS/CHoCH state machine — **มีโค้ดแล้ว** ใน `gold_r15_choch.py` |
+| Momentum | **Python** | `f05_logret_4`, `f06_logret_12`, displacement |
+| Volatility | **Python** | `f08_atr_percentile` |
+| Session | **Python** | lookup จากชั่วโมง (`_session_for_hour`) |
+| **Macro** | **LLM** | ตีความข่าว / event mix / สัญญาณที่ขัดกัน — ช่องเดียวที่ LLM ได้เปรียบจริง |
+| Risk | **Python (บังคับ)** | spread, งบ daily-loss ที่เหลือ, ระยะถึง limit — §11 ให้ Risk Engine เป็นเจ้าของ veto |
+
+**หน้าที่จริงของ LLM ใน P6** มี 3 อย่าง ไม่ใช่การให้คะแนนทั้งเจ็ดช่อง:
+1. ให้คะแนน **Macro** ช่องเดียว
+2. ตอบว่า "มีอะไรที่ตัวเลข 6 ช่องมองไม่เห็น และควร veto ไหม"
+3. เขียน `thesis` + `invalidation` + `risk_factors` ตาม JSON schema ใน §6
+
+**กฎทิศทางเดียว: LLM ลดคะแนน / ยับยั้งได้ แต่เพิ่มไม่ได้** — รักษาหลัก
+"AI assists. Rules constrain. Risk Engine decides."
+
+### 16.3 Gating policy (ตามที่ผู้ใช้ยืนยัน 2026-09-01)
+
+```
+Final Score < 60   → NO_TRADE
+60 – 75            → small risk  = 0.25%
+> 75               → normal risk = 0.5%   (ตาม §11 risk_per_trade)
+```
+
+⚠️ ร่างแรกของผู้ใช้เขียน `75-85 → normal` และ `>85 → normal` ซ้ำกัน — **ยืนยันแล้วว่า
+พิมพ์ซ้ำ ไม่ใช่ตั้งใจให้เพิ่ม size** จึงรวมเป็น band เดียว ซึ่งสอดคล้องกับ §20
+("❌ Increase leverage because AI confidence is high") ถ้าอนาคตจะให้คะแนนสูงมีผลเพิ่ม
+ต้องแก้ §20 อย่างตั้งใจก่อน ห้ามค่อย ๆ เลื่อนเข้ามา
+
+### 16.4 กฎ weakest-link (เพิ่มจากข้อเสนอ audit)
+
+ค่าเฉลี่ยกลบจุดอ่อนได้ — ตัวอย่างที่ให้มา Macro = 42 แต่ Final ยังได้ 78
+จึงเพิ่ม: **มิติใดต่ำกว่า 50 → block ทันที ไม่ว่าค่าเฉลี่ยจะเท่าไร**
+อธิบายได้ตรงกว่าและจูนน้อยกว่าการไปขยับน้ำหนัก
+
+### 16.5 ⚠️ ความเสี่ยงหลัก: free parameters
+
+น้ำหนักของทั้ง 7 มิติ **ไม่เคยถูกระบุออกมา** และย้อนคำนวณจากตัวอย่างที่ให้มาได้ว่า:
+
+```
+equal weight       = 76.43     (ไม่ใช่ 78)
+median             = 82
+min                = 42
+Macro 10% + ที่เหลือ 15% เท่ากัน → 78.15   ← ใกล้ 78 ที่สุด
+```
+
+รวม 7 น้ำหนัก + 3 threshold (60 / 75 / 50-weakest-link) = **10 free parameter ที่ตั้งด้วยมือ**
+นี่คือรูปแบบเดียวกับที่ `docs/FINDINGS.md` เตือนไว้ และเป็นเหตุผลที่ ML gate เดิมถูกฆ่าทิ้ง
+ที่ AUC 0.497 — scorecard ที่จูนด้วยมือคือกล่องดำใบเดิมที่อ่านง่ายขึ้นเท่านั้น
+
+### 16.6 Definition of Done ของ P6 — shadow mode ก่อนเสมอ
+
+1. **Bucket test (ทำได้ทันที ไม่ต้องเรียก LLM สักครั้ง)**: strategy ที่ falsified ทั้ง 8 ตัว
+   ทิ้ง labeled trade ไว้หลักพันถึงหมื่นไม้พร้อม `net_r_multiple` (R17 ตัวเดียว n=3,300–10,300
+   ต่อ config) → คำนวณ 6 ช่อง deterministic ย้อนหลังบนไม้เหล่านั้น → แบ่ง bucket ตามคะแนน →
+   **ตรวจว่า mean R ไล่ขึ้นตามคะแนนจริงไหม** ถ้าคะแนนสูงไม่ได้ให้ R ดีกว่าคะแนนต่ำ
+   scorecard คือของประดับ และเรารู้ก่อนลงแรงสร้าง P6 ทั้งเฟส (ราคาถูกมาก harness มีอยู่แล้ว)
+2. **Shadow mode**: log scorecard ทุก setup แต่ **ยังไม่ให้คุม risk tier** จนกว่าข้อ 1 จะผ่าน
+3. **A/B ของช่อง Macro**: log ทุก LLM call แล้ววัดว่าการเพิ่ม Macro เข้าไปทำให้ separation
+   ดีขึ้นจริงหรือไม่ เทียบกับ 6 ช่อง deterministic ล้วน
+4. **Fail-safe**: LLM ใช้ไม่ได้ → `Macro = null` → NO NEW TRADE (§17) ไม่ใช่เดาค่ากลางแล้วเทรดต่อ
+5. ทุกช่อง + Final + เหตุผล veto ถูกเขียนลง journal **แม้เป็น NO_TRADE** (§14)
+
+### 16.7 ไฟล์ที่ต้องสร้าง (เพิ่มเข้า §9)
+
+```
+src/ai/scorecard.py        6 ช่อง deterministic + รวมคะแนน + weakest-link
+src/ai/macro_agent.py      ช่อง Macro (LLM) + veto/thesis
+tests/test_scorecard.py    รวมถึง monotonicity/บั๊ก weight, weakest-link, fail-safe เมื่อ Macro=null
+scripts/research_scorecard_bucket_test.py   ข้อ 16.6.1
+```
+
+## 17. สถานะเอกสาร
+
+**P0 (git hygiene) เสร็จแล้ว** 2026-09-01 — แก้ `.gitignore` ที่กลืน
+`docs/research/artifacts/` (ผลวิจัย 23 ไฟล์ไม่เคยเข้า git), commit gold track ทั้ง track,
+เพิ่ม `requirements.txt` (Python 3.13.7), ตั้ง upstream แล้ว push ขึ้น `origin/main`
+— เป็นเงื่อนไขจำเป็นก่อนย้ายเครื่องไป PC
+
+**ยังไม่ implement โค้ดของ target architecture** ตาม §21 ("อย่า implement ก่อนส่ง
+Architecture/GAP Analysis ให้ review") คำถาม blocking ใน §15 ได้คำตอบครบแล้ว
+งานถัดไปคือ **P2 (XAU data pipeline: เพิ่ม M5/H4 + validation layer)**
+
+### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
+| ของ | ขนาด | วิธี |
+|---|---|---|
+| `data/raw/` | 548M (`XAUUSD_1m.parquet` 154M) | ก๊อปตรง — re-fetch M1 จาก Dukascopy ใช้ ~1–2 ชม. |
+| `.env` | — | พิมพ์ใหม่บน PC (Binance testnet keys, LINE token) ห้าม commit |
+| `.venv/` | — | สร้างใหม่จาก `requirements.txt` ต้องมี Python 3.13.7 |
+| `~/.ssh/oracle_trading_vps.key` | — | ก๊อป หรือสร้าง key ใหม่ ถ้ายังต้องคุม VPS ที่รัน ETH/XRP |
