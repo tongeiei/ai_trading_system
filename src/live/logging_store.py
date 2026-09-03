@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import insert, select, text
 from sqlalchemy.engine import Engine
 
-from src.data.db import signals, risk_decisions, orders, trades
+from src.data.db import signals, risk_decisions, orders, trades, regime_states
 
 
 def now_utc() -> datetime:
@@ -140,3 +140,27 @@ def log_trade_close(engine: Engine, trade_id: str, exit_price: float, exit_reaso
                 net_pnl=net_pnl, r_multiple=r_multiple,
             )
         )
+
+
+def log_regime_states(engine: Engine, symbol: str, timeframe: str, regime_df) -> int:
+    """Bulk-insert one row per bar from src.regime.engine.classify_regime_v2's
+    output. Append-only, like signals/trades -- not an upsert, so re-running
+    against the same (symbol, timeframe, time_utc) range will raise an
+    IntegrityError; use a fresh DB or a new symbol/timeframe per run.
+
+    Returns the number of rows inserted.
+    """
+    computed_at = now_utc()
+    rows = [
+        {
+            "symbol": symbol, "timeframe": timeframe, "time_utc": row.time_utc,
+            "regime": row.regime, "regime_confidence": row.regime_confidence,
+            "regime_features": row.regime_features, "computed_at_utc": computed_at,
+        }
+        for row in regime_df.itertuples()
+    ]
+    if not rows:
+        return 0
+    with engine.begin() as conn:
+        conn.execute(insert(regime_states), rows)
+    return len(rows)

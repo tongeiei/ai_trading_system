@@ -313,7 +313,7 @@ Dockerfile, docker-compose.yml, requirements.txt / pyproject.toml
 | P1 | Audit (ไฟล์นี้) | ✅ เสร็จ รอ review |
 | P2 | XAU/USD data pipeline: เพิ่ม M5 + H4, validation layer, live-feed spike (~~calendar~~ ตัดออก, §15 ข้อ 10) | ✅ เสร็จ 2026-09-03 — ครบ 5 TF (M1/M5/M15/H1/H4), validation test ผ่าน (ดู §17) |
 | P3 | Feature engine ขยายตาม §8 + `structure.py` (ยก detector จาก R14/R15/R17) | ✅ เสร็จ 2026-09-03 — leakage test ผ่านทุก feature ใหม่ (ดู §17). `f12_spread_ratio` **ยังไม่มีค่าจริงสำหรับ backtest** — ไม่มี historical spread series จริงให้ใช้เลย (crypto/gold ทั้งคู่), เก็บเป็น NaN ต่อไปตามเดิม รอ live wiring |
-| P4 | Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist | regime + confidence + features + timestamp เขียนลง DB ทุกแท่ง |
+| P4 | Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist | ✅ เสร็จ 2026-09-03 — regime + confidence + features + timestamp เขียนลง DB ทุกแท่งจริง (ดู §17) |
 | P5 | Setup scanner + registry + status lifecycle | setup ทุกตัวมีสถานะ RESEARCH/CANDIDATE/VALIDATED/PAPER/LIVE/REJECTED |
 | P6 | AI integration (Haiku screen → Sonnet analyst, structured JSON) | AI down = NO NEW TRADE, ทุก call ถูก log, **ยังไม่ต่อ execution** |
 | P7 | Risk Engine ครบตาม §11 + kill switch (~~news/NFP block~~ ตัดออก, §15 ข้อ 10) | unit test ครบทุก limit, veto AI ได้จริง |
@@ -686,7 +686,37 @@ Architecture/GAP Analysis ให้ review") คำถาม blocking ใน §1
 - Smoke test `scripts/run_gold_r1_orb.py` (เรียก `build_features(m15, h1)` แบบ 2-arg
   ตรงเดิม) รันผ่านไม่มี error, ไม่กระทบ path เดิมของ gold backtest
 
-งานถัดไปคือ **P4 (Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist)**
+**P4 (Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist) เสร็จแล้ว** 2026-09-03:
+- `src/regime/engine.py` (ใหม่) — `classify_regime_v2()`, 5 class ตาม `TASK_NEW_WORLD.md`
+  §7 **ไม่แตะ `src/regime/rules.py::classify_regime` เลย** เพราะฟังก์ชันนั้น locked
+  อยู่กับ live ETH/XRP pipeline (`v0_rules.py`/`mean_reversion.py` เช็ค
+  `regime == "TREND"`/`"RANGE"` แบบ string equality ตรงๆ) และมี ~25 research scripts
+  ที่ reproduce ตัวเลขใน `docs/FINDINGS.md` ด้วย classifier 2-class เดิม แก้ในที่เดิม
+  จะเปลี่ยนพฤติกรรม live แบบเงียบๆ และทำให้ backtest history ที่ lock ไว้ผิด — จึงแยกเป็น
+  ไฟล์ใหม่ตามที่ §9 "Create" list ระบุไว้อยู่แล้ว
+- Precedence/threshold ของ 3 class ใหม่ (VOLATILITY_EXPANSION/HIGH_VOLATILITY/UNKNOWN)
+  และสูตร `regime_confidence` เป็น**การออกแบบใหม่ของ session นี้** — ไม่มีระบุไว้ที่ไหน
+  มาก่อน (TASK_NEW_WORLD.md §7 มีแค่ชื่อ 5 class + 4 field ที่ต้องเก็บ เป็นตัวอย่าง
+  ไม่ใช่ spec) และ**ยังไม่ผ่าน backtest validation** เหมือนส่วนอื่นของ target
+  architecture ที่ยังไม่ได้ทดสอบ
+- `src/data/db.py` เพิ่มตาราง `regime_states` ใหม่ (ไม่แตะตารางเดิม, `create_all()`
+  สร้างเฉพาะตารางที่ยังไม่มี ปลอดภัยกับ `data/trading.db` ของ live pipeline)
+- `src/live/logging_store.py` เพิ่ม `log_regime_states()` ตาม pattern เดิมของ
+  `log_signal`/`log_trade_open`
+- `scripts/backfill_regime_states.py` (ใหม่) — CLI รัน regime engine บนข้อมูล XAU M15
+  จริงแล้วเขียนลง DB ตาม DoD — ทดสอบกับข้อมูลจริงช่วง 2023-01 ถึง 2023-06 (9,725 แท่ง):
+  TREND 41.6%, RANGE 38.0%, VOLATILITY_EXPANSION 14.5%, HIGH_VOLATILITY 3.9%,
+  UNKNOWN 2.1% (warm-up) — กระจายตัวสมเหตุสมผล ไม่มี class ไหน degenerate
+- Tests: `tests/test_regime_engine.py` (ใหม่, 9 เทส รวม DB round-trip) — suite รวม
+  **80/80 เขียว**
+- ยืนยันว่าไม่กระทบ live path: ไม่มีโค้ดใน `src/live/`/`src/strategy/` import
+  `src.regime.engine`, `src/regime/rules.py` ไม่มี diff เลย (`git diff` เปล่า)
+- Scope ที่ตั้งใจไม่ทำใน P4 นี้: ยังไม่ wire `classify_regime_v2` เข้า live XAU
+  execution path ใดๆ (ยังไม่มี XAU live pipeline อยู่ดี, ต้องรอ P5-P13), ยังไม่ backtest
+  ประเมินคุณค่าของ regime engine ตัวใหม่ — Setup Scanner/AI layer ที่จะใช้งานมันจริง
+  คือ P5 ขึ้นไป
+
+งานถัดไปคือ **P5 (Setup scanner + registry + status lifecycle)**
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |

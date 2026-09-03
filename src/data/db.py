@@ -87,6 +87,22 @@ trades = Table(
     Column("net_pnl", Float, nullable=True), Column("r_multiple", Float, nullable=True),
 )
 
+# regime_states: written by src/regime/engine.py::classify_regime_v2 (5-class
+# TREND/RANGE/VOLATILITY_EXPANSION/HIGH_VOLATILITY/UNKNOWN regime engine, XAU P4).
+# Separate from the "regime" column on `signals` above, which is written by the
+# locked 2-class src/regime/rules.py::classify_regime used by the live ETH/XRP
+# pipeline -- do not conflate the two.
+regime_states = Table(
+    "regime_states", metadata,
+    Column("symbol", String, primary_key=True),
+    Column("timeframe", String, primary_key=True),
+    Column("time_utc", DateTime(timezone=True), primary_key=True),
+    Column("regime", String),
+    Column("regime_confidence", Float),
+    Column("regime_features", String),  # JSON
+    Column("computed_at_utc", DateTime(timezone=True)),
+)
+
 
 def get_engine(db_path: str = "data/trading.db"):
     return create_engine(f"sqlite:///{db_path}")

@@ -70,7 +70,7 @@ Key modules:
   (`tests/test_leakage.py`, `tests/test_features_structure.py`) — shared by both the
   live crypto pipeline and the XAU gold backtest track, see
   `docs/XAU_ARCHITECTURE_AUDIT.md` §17 for the P3 additive-only design constraint
-- `src/regime/rules.py` — rule-based TREND/RANGE classifier (deliberately not ML — see `TASK_NEW_WORLD.md` §7 rationale, still followed)
+- `src/regime/rules.py` — rule-based TREND/RANGE classifier (deliberately not ML — see `TASK_NEW_WORLD.md` §7 rationale, still followed). **Locked** — do not modify; live ETH/XRP strategy code and ~25 research scripts depend on its exact 2-class string output. `src/regime/engine.py` is a separate, additive 5-class (TREND/RANGE/VOLATILITY_EXPANSION/HIGH_VOLATILITY/UNKNOWN) regime engine added in XAU P4 — not wired into any live path, persists to the `regime_states` table via `src/live/logging_store.py::log_regime_states`
 - `src/labeling/triple_barrier.py` — López de Prado triple-barrier labeling
 - `src/backtest/` — `costs.py` (slippage/fees as basis points of price, not a fixed USD amount — a past bug), `significance.py` (bootstrap tests), `gold_harness.py` (separate harness for the XAU track, do not conflate with the crypto backtester)
 - `src/risk/sizing.py` — position sizing against `ExchangeSpec` (step size / min notional from `exchange.load_markets()`); has anti-martingale regression tests — lot size must never be a function of the previous trade's outcome
