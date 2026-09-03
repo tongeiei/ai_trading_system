@@ -748,7 +748,33 @@ Architecture/GAP Analysis ให้ review") คำถาม blocking ใน §1
   finding เดิม), ไม่ wire scanner เข้า live execution path ใดๆ, ไม่มี promotion
   workflow (แค่วางฐานข้อมูลไว้), ไม่เขียน adapter ให้ setup อีก 9 ตัวที่เหลือ
 
-งานถัดไปคือ **P6 (Setup Quality Scorecard — deterministic 6 ช่อง + Macro AI, ดู §16)**
+**P6 เริ่มแล้วบางส่วน** 2026-09-03 (ยังไม่ครบเฟส — deterministic scorecard 6 ช่อง,
+bucket test, shadow mode logging ยังไม่ได้ทำ):
+- `config/xau.yaml` (ใหม่, ยังไม่ commit ตอนเขียนบันทึกนี้) — `llm.active: kimi`,
+  ทดลอง connectivity แล้วจริงกับ Kimi K3 (latency median ~47s, cost/call ~$0.028)
+  provider สำรอง DeepSeek/OpenAI พร้อม config ไว้ (สลับได้ด้วยการแก้ 1 บรรทัด ไม่ต้อง
+  แก้โค้ด ตาม §16.8จ.2) — เอกสารนี้เคยเลือก Gemini ไว้ (§16.8ค, 2026-09-01) แต่
+  `docs/XAU_LIVE_HANDOFF.md` (2026-09-03) เปลี่ยนมาเป็น DeepSeek/Kimi — **ให้ยึด
+  `config/xau.yaml`/`XAU_LIVE_HANDOFF.md` เป็นของจริงล่าสุด ไม่ใช่ §16.8ค**
+- `scripts/spike_llm_connectivity.py` (ใหม่) — validate structured JSON output
+  จริงกับ provider จริง ตอบ open item ใน §15 ข้อ 7 (schema stability)
+- `src/ai/analyst.py` (ใหม่) — client สำหรับ Strong AI Agent (Macro/veto/thesis
+  layer เดิม, ตอนนี้ทำได้แค่ veto+narrate เพราะ Macro ถูกตัดออกจาก scope แล้ว —
+  ดู §15 ข้อ 10) ใช้ schema/prompt เดียวกับ spike script เป๊ะ **ยังไม่ถูกเรียกจากที่
+  ไหนเลย** (ไม่มี scorecard.py ให้ป้อน input จริง, ไม่มี live/backtest wiring) —
+  บังคับ `llm.enabled` เป็น hard gate ไม่มี bypass เพื่อกัน backtest loop เผลอยิง
+  call จริงเป็นพันครั้ง, retry เฉพาะ error ที่ transient (429/5xx/malformed JSON/
+  schema violation) ตาม `max_retries` ใน config
+  ⚠️ ระหว่างพัฒนา เทส unit เคยมีบั๊ก (`load_dotenv()` ถูกเรียกใน client เอง ทำให้
+  เทส "missing key" ไปเจอ key จริงแทน) ทำให้เกิด **real API call จริง 1 ครั้ง**
+  ไปที่ Kimi ก่อนแก้ (ประมาณ $0.03) — แก้แล้วโดยย้ายหน้าที่ `load_dotenv()` ไปเป็น
+  ของผู้เรียก ไม่ใช่ของ client (`src/ai/analyst.py`'s `_api_key()` docstring มี
+  บันทึกเหตุผลไว้)
+- Tests: `tests/test_ai_analyst.py` (ใหม่, 11 เทส, mock `requests.post` ทั้งหมด
+  ไม่มี network call จริง) — suite รวม **99/99 เขียว**
+
+งานถัดไปคือ **P6 ส่วนที่เหลือ** (Setup Quality Scorecard — deterministic 6 ช่อง +
+bucket test ก่อนเสมอ ตาม §16.6 ข้อ 1 + shadow-mode logging, ดู §16)
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |

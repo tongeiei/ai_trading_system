@@ -1,0 +1,112 @@
+# XAU/USD track config — separate from config/gold_spec.yaml (backtest cost/precision spec)
+# and config/exchange_spec.yaml (crypto perps). Do not merge.
+#
+# LLM section exists to satisfy docs/XAU_ARCHITECTURE_AUDIT.md §16.8จ.2:
+# provider + model id live in config, NOT in code. Swapping providers must be a
+# config edit, never a refactor. All candidates below are OpenAI-compatible
+# (same /chat/completions shape), so src/ai/ only ever needs one HTTP client.
+
+llm:
+  active: kimi          # <- the only line that changes when swapping providers
+
+  # Hard guardrail, not just discipline: §16.8ง shows ~100 calls/month is the
+  # intended volume (call only on setup detected / regime change). Wiring this
+  # to every M5 bar would be ~3,700 calls/month = ~11x the $10/month budget.
+  max_calls_per_month: 300
+  timeout_seconds: 90     # measured: Kimi K3 reasoning latency ~46s/call, 2026-09-03
+  max_retries: 1           # transient only (timeout/rate-limit/malformed) -- one retry
+                           # measured at ~1x latency again (~50s), so retry+timeout
+                           # together stay well inside a 900s M15 bar.
+
+  # Decided 2026-09-03, informed by the connectivity spike: since Macro was
+  # dropped (news/calendar cut from scope, §15 ข้อ 10), the LLM only vetoes and
+  # narrates -- it is no longer an input to the Final Score. A call failure
+  # after retries therefore means "no independent review happened," not "the
+  # score is unknown." Two live options, deliberately NOT collapsed into one
+  # blanket rule because they answer different questions:
+  #   no_new_trade  -- treat "LLM unreachable" as a hard stop on setups that
+  #                    already cleared the deterministic gate (§16.3). Safer,
+  #                    but an hours-long outage silently blocks the whole
+  #                    trading window with no visible alert (XAU track has no
+  #                    alerting yet, unlike the crypto LINE alerts in
+  #                    src/live/alerting.py) -- REQUIRES that alerting exists
+  #                    before this is turned on for real money.
+  #   deterministic_only -- fall back to the 5/6-column score, veto=null,
+  #                    still journal the failure. Keeps "Rules constrain" as
+  #                    the actual floor and matches what the system already
+  #                    does when the LLM is disabled entirely (see `enabled`
+  #                    below) -- an outage degrades to the exact same state as
+  #                    the deliberate off-switch, not to a worse one.
+  # Chosen: deterministic_only for P6 (shadow mode has no execution risk yet,
+  # so "silently trade without veto" costs nothing but a missed veto that
+  # would be journaled and caught in the §16.6.3 A/B anyway). Revisit before
+  # P13 (small live): once real money is on the line AND alerting exists,
+  # switch to no_new_trade for the outage case specifically -- a temporary
+  # score cap (small risk) is not equivalent to a Risk Engine veto and must
+  # not be treated as one.
+  on_failure: deterministic_only   # no_new_trade | deterministic_only
+
+  # Bounds the cost of a SINGLE call, which no call-count cap can protect against:
+  # a model that rambles 4k tokens instead of ~350 costs 10x per call while the
+  # call count stays flat. Kimi bills output at $15/Mtok, so this is the most
+  # expensive dimension to leave unbounded.
+  # Kimi K3 is a reasoning model: it spends ~1000 hidden reasoning tokens before
+  # the JSON, so completion regularly runs ~1,500-2,000 tokens even for a short
+  # answer -- 500 was a guess that undershot by 3x (measured 2026-09-03: 1,557).
+  max_output_tokens: 4000
+  max_input_chars: 24000     # ~6k tokens; truncate context rather than pay for it
+
+  # Layer 3: a monthly cap alone is useless -- a runaway loop can burn the whole
+  # month in one day. Measured volume is ~6.3 calls/day (133/month over ~21
+  # trading days), so 20/day is 3x headroom.
+  max_calls_per_day: 20
+
+  # Layer 5: must be explicitly enabled. Backtest/replay paths never flip this,
+  # so an accidental LLM call inside a loop over 20 years of bars cannot bill.
+  enabled: false
+
+  # Prices below were checked against each vendor's published rates on 2026-09-03
+  # and are USD per 1M tokens. Re-check before switching -- vendors reprice and
+  # rename: `deepseek-chat` was retired 2026-07-24 in favour of V4-Flash.
+  providers:
+    kimi:
+      base_url: "https://api.moonshot.ai/v1"
+      model: "kimi-k3"
+      api_key_env: "MOONSHOT_API_KEY"
+      supports_strict_schema: true      # response_format json_schema, strict: true
+      # Rejects temperature != 1 outright (HTTP 400 "only 1 is allowed for this
+      # model"), so this provider CANNOT be pinned deterministic. Verified
+      # 2026-09-03 -- see the reproducibility caveat in the P6 notes.
+      temperature: 1
+      rpm_limit: 3                      # observed org cap on a new account
+      # Measured 2026-09-03, 14 calls: latency median 47s, max 65s (well inside
+      # the 90s timeout and a 900s M15 bar, but a retry adds another ~50s).
+      # cost/call ~$0.028 at the working max_output_tokens -> 133 calls/mo ~= $3.75.
+      price_in_per_mtok: 3.00
+      price_in_cached_per_mtok: 0.30
+      price_out_per_mtok: 15.00
+
+    deepseek:
+      base_url: "https://api.deepseek.com/v1"
+      model: "deepseek-v4-flash"
+      api_key_env: "DEEPSEEK_API_KEY"
+      # Ambiguous: vendor docs still lead with JSON mode, and third-party reports
+      # say schema adherence is not strictly enforced. Left false so the client
+      # takes the validate-locally path -- flip only if the spike proves it.
+      supports_strict_schema: false
+      temperature: 0
+      rpm_limit: 60
+      price_in_per_mtok: 0.14
+      price_in_cached_per_mtok: 0.0028
+      price_out_per_mtok: 0.28
+
+    openai:
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-5.6-luna"
+      api_key_env: "OPENAI_API_KEY"
+      supports_strict_schema: true
+      temperature: 0
+      rpm_limit: 60
+      price_in_per_mtok: 0.20
+      price_in_cached_per_mtok: 0.02
+      price_out_per_mtok: 1.20
