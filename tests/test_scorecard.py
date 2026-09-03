@@ -4,12 +4,15 @@ scripts/bucket_test_scorecard.py)."""
 import numpy as np
 import pandas as pd
 import pytest
+from sqlalchemy import select
 
 from src.ai.scorecard import (
     Scorecard, compute_scorecard, compute_scorecard_batch, gate,
     _momentum_score, _risk_score, _session_score, _structure_score, _trend_score,
     _volatility_score,
 )
+from src.data.db import init_db, scorecard_log
+from src.live.logging_store import log_scorecard_batch
 
 
 def test_trend_score_higher_when_aligned_and_strong():
@@ -171,3 +174,32 @@ def test_compute_scorecard_batch_no_lookahead():
         full[["trend", "structure", "momentum", "volatility", "session", "risk", "final_score"]].reset_index(drop=True),
         truncated[["trend", "structure", "momentum", "volatility", "session", "risk", "final_score"]].reset_index(drop=True),
     )
+
+
+def test_log_scorecard_batch_round_trip(tmp_path):
+    m15, h1 = _synthetic_m15h1()
+    trades = _synthetic_trades(m15)
+    trades["net_r_multiple"] = np.linspace(-0.5, 0.5, len(trades))
+    scored = compute_scorecard_batch(m15, h1, trades)
+    scored["strategy"] = "test_strategy"
+    scored["decision"] = [gate(Scorecard(
+        r.trend, r.structure, r.momentum, r.volatility, r.session, r.risk,
+        r.final_score, bool(r.weakest_link_block),
+    )).decision for r in scored.itertuples()]
+    scored["risk_pct"] = [gate(Scorecard(
+        r.trend, r.structure, r.momentum, r.volatility, r.session, r.risk,
+        r.final_score, bool(r.weakest_link_block),
+    )).risk_pct for r in scored.itertuples()]
+
+    engine = init_db(str(tmp_path / "test.db"))
+    n = log_scorecard_batch(engine, "XAUUSD", "M15", scored)
+    assert n == len(scored)
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(scorecard_log)).fetchall()
+    assert len(rows) == len(scored)
+    assert rows[0].strategy == "test_strategy"
+    assert rows[0].symbol == "XAUUSD"
+    assert rows[0].veto is None
+    assert rows[0].actual_net_r_multiple is not None
+    assert rows[0].decision in ("NO_TRADE", "SMALL_RISK", "NORMAL_RISK")

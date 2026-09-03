@@ -65,6 +65,32 @@ def _bucket_report(df: pd.DataFrame, score_col: str, r_col: str, label: str) -> 
     print(f"Pearson corr(final_score, {r_col}) = {corr:.4f}")
 
 
+def score_all_strategies(m15, h1, m1, spec, verbose: bool = True) -> pd.DataFrame:
+    """Runs each of STRATEGIES' locked FROZEN_CFG, labels + costs the trades, and
+    scores them with compute_scorecard_batch. Returns the pooled DataFrame (one
+    row per trade, with a `strategy` column) -- reused by both this script and
+    scripts/shadow_log_scorecard.py so the two never compute the scorecard
+    differently for the same trades."""
+    all_scored = []
+    for name, (signal_fn, cfg) in STRATEGIES.items():
+        signals = signal_fn(m15, **cfg)
+        if signals.empty:
+            if verbose:
+                print(f"[bucket_test] {name}: 0 signals, skipping")
+            continue
+        labeled = label_all_signals(signals, m1)
+        costed = apply_gold_costs(labeled, spec)
+        scored = compute_scorecard_batch(m15, h1, costed)
+        scored["strategy"] = name
+        all_scored.append(scored)
+        if verbose:
+            print(f"[bucket_test] {name}: {len(scored):,} labeled trades")
+
+    if not all_scored:
+        return pd.DataFrame()
+    return pd.concat(all_scored, ignore_index=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", default=None)
@@ -75,24 +101,10 @@ def main() -> int:
     m15, h1, m1 = load_gold_data(spec, start=args.start, end=args.end)
     print(f"[bucket_test] loaded XAUUSD: m15={len(m15):,} h1={len(h1):,} m1={len(m1):,}")
 
-    all_scored = []
-    for name, (signal_fn, cfg) in STRATEGIES.items():
-        signals = signal_fn(m15, **cfg)
-        if signals.empty:
-            print(f"[bucket_test] {name}: 0 signals, skipping")
-            continue
-        labeled = label_all_signals(signals, m1)
-        costed = apply_gold_costs(labeled, spec)
-        scored = compute_scorecard_batch(m15, h1, costed)
-        scored["strategy"] = name
-        all_scored.append(scored)
-        print(f"[bucket_test] {name}: {len(scored):,} labeled trades")
-
-    if not all_scored:
+    pooled = score_all_strategies(m15, h1, m1, spec)
+    if pooled.empty:
         print("[bucket_test] no trades from any strategy -- nothing to test")
         return 1
-
-    pooled = pd.concat(all_scored, ignore_index=True)
 
     for name, group in pooled.groupby("strategy"):
         _bucket_report(group, "final_score", "net_r_multiple", name)

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import insert, select, text
 from sqlalchemy.engine import Engine
 
-from src.data.db import signals, risk_decisions, orders, trades, regime_states
+from src.data.db import signals, risk_decisions, orders, trades, regime_states, scorecard_log
 
 
 def now_utc() -> datetime:
@@ -140,6 +140,39 @@ def log_trade_close(engine: Engine, trade_id: str, exit_price: float, exit_reaso
                 net_pnl=net_pnl, r_multiple=r_multiple,
             )
         )
+
+
+def log_scorecard_batch(engine: Engine, symbol: str, timeframe: str, scored_df) -> int:
+    """Bulk-insert one row per trade from a scorecard-scored DataFrame (columns:
+    strategy, time_utc, action, trend, structure, momentum, volatility, session,
+    risk, final_score, weakest_link_block, decision, risk_pct, and optionally
+    net_r_multiple/veto/veto_reason/thesis) -- see src.ai.scorecard and
+    scripts/shadow_log_scorecard.py. Shadow-mode only: this never gates
+    anything, it only records. Append-only, like the other log_* helpers here.
+
+    Returns the number of rows inserted.
+    """
+    logged_at = now_utc()
+    rows = [
+        {
+            "strategy": row.strategy, "symbol": symbol, "timeframe": timeframe,
+            "time_utc": row.time_utc, "direction": row.action,
+            "trend": row.trend, "structure": row.structure, "momentum": row.momentum,
+            "volatility": row.volatility, "session": row.session, "risk": row.risk,
+            "final_score": row.final_score, "weakest_link_block": bool(row.weakest_link_block),
+            "decision": row.decision, "risk_pct": row.risk_pct,
+            "veto": getattr(row, "veto", None), "veto_reason": getattr(row, "veto_reason", None),
+            "thesis": getattr(row, "thesis", None),
+            "actual_net_r_multiple": getattr(row, "net_r_multiple", None),
+            "logged_at_utc": logged_at,
+        }
+        for row in scored_df.itertuples()
+    ]
+    if not rows:
+        return 0
+    with engine.begin() as conn:
+        conn.execute(insert(scorecard_log), rows)
+    return len(rows)
 
 
 def log_regime_states(engine: Engine, symbol: str, timeframe: str, regime_df) -> int:

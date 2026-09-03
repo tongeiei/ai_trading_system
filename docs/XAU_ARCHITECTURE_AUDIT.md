@@ -807,9 +807,31 @@ bucket test, shadow mode logging ยังไม่ได้ทำ):
 - ยืนยันว่าไม่กระทบ live path: `src/regime/rules.py`, `src/strategy/v0_rules.py`,
   โค้ดใต้ `src/live/` ไม่มี diff เลย
 
-งานถัดไปคือ **รอผู้ใช้ตัดสินใจ**: ไปต่อ P6 shadow-mode logging (§16.6 ข้อ 2) บนพื้นฐาน
-สัญญาณอ่อนนี้ หรือพักไว้ก่อนแล้วหาหลักฐานที่แน่นกว่า (เช่น เพิ่ม R1/R2/R5/R8, ทำ OOS
-split, เช็ค per-strategy ให้ครบ) ก่อนลงทุนสร้างต่อ
+**P6 §16.6 ข้อ 2 (shadow-mode logging) เสร็จแล้ว** 2026-09-03 — ผู้ใช้ยืนยันให้ไปต่อ
+บนสัญญาณอ่อนนี้ (ดูข้อบนก่อนหน้า):
+- `src/data/db.py` เพิ่มตาราง `scorecard_log` (ใหม่ ไม่แตะตารางเดิม) — เก็บทุกช่อง +
+  final_score + weakest_link_block + decision/risk_pct (สำหรับสังเกตการณ์เท่านั้น
+  **ไม่มีอะไรอ่านค่านี้ไปคุม order sizing จริง**) + `actual_net_r_multiple` (backtest
+  เท่านั้น, NULL ตอน live) + `veto`/`veto_reason`/`thesis` (NULL ทั้งหมดตอนนี้ — ตั้งใจ
+  ไม่เรียก `src/ai/analyst.py` ในรอบนี้ เพื่อไม่เสีย API budget จริงกับ scorecard ที่ยัง
+  ไม่มีหลักฐานหนักพอ)
+- `src/live/logging_store.py::log_scorecard_batch()` ตาม pattern เดิมของ
+  `log_regime_states`/`log_signal`
+- `scripts/shadow_log_scorecard.py` (ใหม่) — รัน pipeline เดียวกับ
+  `scripts/bucket_test_scorecard.py` เป๊ะ (ดึง `score_all_strategies()` ออกมาใช้ร่วม
+  กัน ไม่คำนวณซ้ำสองแบบ) แล้วเขียนผลลง `scorecard_log` — ทดสอบจริงกับข้อมูล
+  2022-01 ถึง 2022-06 (473 ไม้): NO_TRADE 84.8%, SMALL_RISK 5.9%, NORMAL_RISK 9.3%
+  — round-trip DB เช็คแล้วถูกต้อง
+- Tests: เพิ่ม `test_log_scorecard_batch_round_trip` ใน `tests/test_scorecard.py`
+  (รวมเป็น 13 เทสในไฟล์นี้) — suite รวม **112/112 เขียว**
+- ยืนยันว่าไม่กระทบ live path: `src/regime/rules.py`/`src/strategy/v0_rules.py` ไม่มี
+  diff, `src/live/logging_store.py` ไม่ import `src.ai` (มีแค่ docstring กล่าวถึง)
+
+งานถัดไปคือ **P6 §16.6 ข้อ 3-4 ที่เหลือ** (Macro A/B — ต้องเรียก LLM จริงเทียบกับ
+deterministic ล้วน, เสียเงินจริง — ควรรอจนกว่า shadow-mode สะสมข้อมูลพอ; fail-safe
+`Macro=null → NO NEW TRADE` — ยังไม่มีความหมายจนกว่า Macro จะถูกเปิดใช้จริง) หรือ
+ข้าม P6 ที่เหลือไปทำ phase อื่นก่อน (P7 Risk Engine ยังไม่มีจริงเลย — D1 gap เดิมที่
+ร้ายแรงที่สุด) — รอผู้ใช้เลือกทิศทาง
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |

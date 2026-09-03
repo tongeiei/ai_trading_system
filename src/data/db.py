@@ -116,6 +116,30 @@ setups = Table(
 )
 
 
+# scorecard_log: shadow-mode log for src/ai/scorecard.py (XAU P6, §16.6 item 2).
+# Logs every setup's scorecard + gate decision -- does NOT control risk tier
+# yet (§16.6's own ordering: shadow mode first, gate control only after the
+# bucket test result is strong enough, which docs/XAU_ARCHITECTURE_AUDIT.md §17
+# records as weak/mixed as of this table's creation). veto/veto_reason/thesis
+# columns are nullable and NULL for every row logged so far -- src/ai/analyst.py
+# (the LLM veto/narrative layer) is not called by the shadow-log script, to
+# avoid spending real API budget validating a scorecard that hasn't earned it.
+scorecard_log = Table(
+    "scorecard_log", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("strategy", String), Column("symbol", String), Column("timeframe", String),
+    Column("time_utc", DateTime(timezone=True)), Column("direction", String),
+    Column("trend", Float), Column("structure", Float), Column("momentum", Float),
+    Column("volatility", Float), Column("session", Float), Column("risk", Float),
+    Column("final_score", Float), Column("weakest_link_block", Boolean),
+    Column("decision", String), Column("risk_pct", Float),
+    Column("veto", Boolean, nullable=True), Column("veto_reason", String, nullable=True),
+    Column("thesis", String, nullable=True),
+    Column("actual_net_r_multiple", Float, nullable=True),  # backtest-only, NULL live
+    Column("logged_at_utc", DateTime(timezone=True)),
+)
+
+
 def get_engine(db_path: str = "data/trading.db"):
     return create_engine(f"sqlite:///{db_path}")
 
