@@ -10,10 +10,12 @@ trade on. Use it for edge / regime / strategy-logic discovery. Any surviving
 config must be RE-VALIDATED for real costs/funding on Binance XAU/USDT before
 going live. Saved as XAUUSD_* to sit alongside (not overwrite) XAUUSDT_*.
 
-Usage:
-    python scripts/fetch_xau_dukascopy.py 15m
-    python scripts/fetch_xau_dukascopy.py 1h
-    python scripts/fetch_xau_dukascopy.py 1m     # slow (~1-2h for full range)
+Usage (PYTHONPATH=. required, same as the other scripts/run_gold_r*.py):
+    PYTHONPATH=. python scripts/fetch_xau_dukascopy.py 15m
+    PYTHONPATH=. python scripts/fetch_xau_dukascopy.py 1h
+    PYTHONPATH=. python scripts/fetch_xau_dukascopy.py 4h
+    PYTHONPATH=. python scripts/fetch_xau_dukascopy.py 5m
+    PYTHONPATH=. python scripts/fetch_xau_dukascopy.py 1m     # slow (~1-2h for full range)
 """
 import sys
 import time
@@ -24,13 +26,17 @@ import pandas as pd
 import dukascopy_python as dk
 from dukascopy_python.instruments import INSTRUMENT_FX_METALS_XAU_USD as XAU
 
+from src.data.validation import validate_timeframe
+
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 START = dt.datetime(2006, 1, 1)
 
 INTERVALS = {
     "1m": (dk.INTERVAL_MIN_1, pd.Timedelta(minutes=1)),
+    "5m": (dk.INTERVAL_MIN_5, pd.Timedelta(minutes=5)),
     "15m": (dk.INTERVAL_MIN_15, pd.Timedelta(minutes=15)),
     "1h": (dk.INTERVAL_HOUR_1, pd.Timedelta(hours=1)),
+    "4h": (dk.INTERVAL_HOUR_4, pd.Timedelta(hours=4)),
 }
 
 
@@ -56,11 +62,13 @@ def fetch(timeframe: str):
     print(f"  wrote {len(df)} rows -> {out}")
     print(f"  range: {df['time_utc'].min()} -> {df['time_utc'].max()}")
 
-    # gap report: intraday gaps > 1.5*step, EXCLUDING weekend market closures
-    gaps = df["time_utc"].diff()
-    big = gaps[gaps > step * 1.5]
-    weekend_like = big[big > pd.Timedelta(hours=24)]
-    print(f"  gaps > 1.5x step: {len(big)}  (of which >24h/weekend-like: {len(weekend_like)})")
+    report = validate_timeframe(df, timeframe)
+    print(f"  {report.summary()}")
+    for issue in report.issues:
+        if issue.severity == "error":
+            print(f"    ERROR [{issue.kind}] {issue.time_utc}: {issue.detail}")
+    if not report.ok:
+        print("  WARNING: validation FAILED — inspect the errors above before trusting this file")
 
 
 if __name__ == "__main__":

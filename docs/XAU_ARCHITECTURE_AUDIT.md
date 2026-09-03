@@ -240,7 +240,7 @@ ccxt มองไม่เห็น (`fetch_open_algo_orders`)
 | Monitoring / Grafana | Streamlit + LINE | **MODIFY** | ไม่มี metrics/Grafana, ไม่มี data-feed health, ไม่มี auto-refresh |
 | System Health (Docker/HC/backup/CB) | systemd only | **NEW** | ไม่มี Docker, circuit breaker, kill switch, backup |
 | Configuration (yaml + env profiles) | `gold_spec.yaml` + constants ในโค้ด | **MODIFY** | ต้องมี `config/xau.yaml` + profile dev/research/paper/live |
-| News / Macro filter (รวม NFP blackout) | `NEWS_BLACKOUT` เป็น no-op hook | **NEW** | ต้องมี calendar source + blackout logic + บันทึกเหตุผล block |
+| News / Macro filter (รวม NFP blackout) | `NEWS_BLACKOUT` เป็น no-op hook | **ตัดออกจาก scope (2026-09-03)** | ผู้ใช้ตัดสินใจไม่ทำ — ระบบจะไม่ป้องกัน NFP/news event ใด ๆ ดู §15 ข้อ 10 |
 | Trading window จ–ศ 08:00–22:00 | ไม่มี (crypto 24/7) | **NEW** | ต้องมี session gate + timezone policy |
 
 ### NEW-3 — ของมีค่าที่ซ่อนอยู่ใน strategy ที่ falsified
@@ -260,7 +260,7 @@ ccxt มองไม่เห็น (`fetch_open_algo_orders`)
 |---|---|
 | `src/features/engine.py` | เพิ่ม feature ตาม §8, เติม `f12_spread_ratio` จริง, รองรับ H4 |
 | `src/regime/rules.py` | ขยายเป็น 5 class + คืน confidence/features |
-| `src/data/db.py` | ตาราง `regime_states`, `ai_analyses`, `news_events`; ขยาย `signals`/`trades` (setup, features_json, ai_score, ai_thesis, spread, slippage, mae, mfe) |
+| `src/data/db.py` | ตาราง `regime_states`, `ai_analyses`; ขยาย `signals`/`trades` (setup, features_json, ai_score, ai_thesis, spread, slippage, mae, mfe) — ~~`news_events`~~ ตัดออกพร้อม news filter (§15 ข้อ 10) |
 | `src/live/logging_store.py` | รองรับคอลัมน์ใหม่ |
 | `src/live/signal_service.py` | รับ data source แบบ pluggable (ccxt / MT5) |
 | `src/live/order_executor.py` | แตก interface, คง Binance adapter ไว้เหมือนเดิม |
@@ -272,7 +272,7 @@ ccxt มองไม่เห็น (`fetch_open_algo_orders`)
 ### Create
 ```
 config/xau.yaml                      config/profiles/{development,research,paper,live}.yaml
-src/data/mt5_feed.py                 src/data/validation.py       src/data/calendar.py
+src/data/mt5_feed.py                 src/data/validation.py
 src/features/structure.py            src/features/macro.py
 src/regime/engine.py
 src/scanner/__init__.py              src/scanner/registry.py      src/scanner/setups/*.py
@@ -311,25 +311,26 @@ Dockerfile, docker-compose.yml, requirements.txt / pyproject.toml
 |---|---|---|
 | P0 (งานบ้าน) | commit track B ที่ยัง untracked + `requirements.txt` + pivot notice รอบใหม่ | `git status` สะอาด, venv reproduce ได้ |
 | P1 | Audit (ไฟล์นี้) | ✅ เสร็จ รอ review |
-| P2 | XAU/USD data pipeline: เพิ่ม M5 + H4, validation layer, calendar, live-feed spike | ครบ 5 TF (M1/M5/M15/H1/H4), validation test ผ่าน |
+| P2 | XAU/USD data pipeline: เพิ่ม M5 + H4, validation layer, live-feed spike (~~calendar~~ ตัดออก, §15 ข้อ 10) | ✅ เสร็จ 2026-09-03 — ครบ 5 TF (M1/M5/M15/H1/H4), validation test ผ่าน (ดู §17) |
 | P3 | Feature engine ขยายตาม §8 + `structure.py` (ยก detector จาก R14/R15/R17) | leakage test ผ่านทุก feature ใหม่, `f12_spread_ratio` มีค่าจริง |
 | P4 | Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist | regime + confidence + features + timestamp เขียนลง DB ทุกแท่ง |
 | P5 | Setup scanner + registry + status lifecycle | setup ทุกตัวมีสถานะ RESEARCH/CANDIDATE/VALIDATED/PAPER/LIVE/REJECTED |
 | P6 | AI integration (Haiku screen → Sonnet analyst, structured JSON) | AI down = NO NEW TRADE, ทุก call ถูก log, **ยังไม่ต่อ execution** |
-| P7 | Risk Engine ครบตาม §11 + kill switch + news/NFP block | unit test ครบทุก limit, veto AI ได้จริง |
+| P7 | Risk Engine ครบตาม §11 + kill switch (~~news/NFP block~~ ตัดออก, §15 ข้อ 10) | unit test ครบทุก limit, veto AI ได้จริง |
 | P8 | MT5 (หรือ broker API) execution adapter | order flow test บน demo account ผ่าน |
 | P9 | Trade journal ขยาย (features / AI thesis / MAE / MFE / spread / slippage) | NO_TRADE ถูกบันทึกพร้อมเหตุผลครบ |
 | P10 | Monitoring (metrics + Grafana + health + data-feed alert) | dashboard ครบตาม §16 |
 | P11 | Backtest / WFO บน pipeline ใหม่ทั้งชุด | reproduce ผล R1–R17 เดิมได้ ไม่มี leakage |
-| P12 | Paper trading (จ–ศ 08:00–22:00 เวลาไทย, เว้นวัน NFP) | รันต่อเนื่อง 4 สัปดาห์ ไม่มี CRITICAL |
+| P12 | Paper trading (จ–ศ 08:00–22:00 เวลาไทย, ~~เว้นวัน NFP~~ ตัดออก, §15 ข้อ 10) | รันต่อเนื่อง 4 สัปดาห์ ไม่มี CRITICAL |
 | P13 | Small live | risk 0.25% แล้วค่อยขยาย |
 
 ทุก phase จบด้วย: Implement → Test → Run → Verify → Document → Commit
 
 ## 11. Dependencies / Infrastructure Changes
 
-**Dependencies ใหม่**: `anthropic` (LLM), MT5 access layer, economic-calendar source,
-`prometheus-client` (ถ้าใช้ Grafana), `alembic` (migration), `pytz/zoneinfo` policy
+**Dependencies ใหม่**: `anthropic` (LLM), MT5 access layer, ~~economic-calendar source~~
+(ตัดออก, §15 ข้อ 10), `prometheus-client` (ถ้าใช้ Grafana), `alembic` (migration),
+`pytz/zoneinfo` policy
 
 **⚠️ Infra risk ที่ใหญ่ที่สุด — MT5 บน Linux**: `MetaTrader5` python package เป็น
 **Windows-only** VPS ปัจจุบันคือ Oracle Ubuntu (ARM, free tier) ทางเลือกคือ
@@ -451,10 +452,40 @@ platform แล้ว**
   ผู้ผลิตงาน มันจะพลาดจุดเดียวกัน นี่คือตำแหน่งเดียวที่การใช้คนละ vendor คุ้มจริง
 - DeepSeek: พิจารณาเฉพาะ layer runtime ถ้าค่าใช้จ่ายกลายเป็นข้อจำกัดจริง ไม่เอาเข้า dev loop
 
+**6. Broker/ประเภทบัญชี/ทุน (2026-09-02)** → **Exness, Standard Cent, ทุนเริ่มทดลอง $10**
+ยังไม่ได้เปิดบัญชีจริง เทสเครื่อง/MT5 connectivity ทั้งหมดตอนนี้ทำบน `MetaQuotes-Demo`
+(generic, standard spec) แทนไปก่อน — รายละเอียดสถานะเครื่องดู `docs/XAU_LIVE_HANDOFF.md`
+
+**7. งบ LLM ต่อเดือน (2026-09-02)** → **DeepSeek, $10/เดือน** (สอดคล้องกับข้อ 5:
+"DeepSeek พิจารณาเฉพาะ layer runtime ถ้าค่าใช้จ่ายกลายเป็นข้อจำกัดจริง") ยังต้องทดสอบ
+ความนิ่งของ structured JSON output ก่อนเชื่อว่าเข้าเกณฑ์ §14 (malformed-response handling)
+
+**8. บัญชี demo ที่ใช้เทสตอนนี้เปลี่ยนเป็น Exness Standard, 1:2000 (2026-09-03)** — เหตุผล:
+**Exness ไม่มี Cent account แบบ demo ให้เปิด** จึงต้องใช้ Standard demo ไปก่อนสำหรับเทส
+connectivity/order flow เท่านั้น **แผนบัญชีจริง (live) ยังคงเป็น Standard Cent ตามเดิม**
+(ไม่ได้เปลี่ยนการตัดสินใจเรื่อง broker/ประเภทบัญชีจริงจากข้อ 6) — เช็ค symbol spec บน
+Standard demo แล้วพบ `XAUUSDm`: contract_size=100, volume_min=0.01 lot, tick_value=0.1
+(เหมือนกับ `MetaQuotes-Demo` เป๊ะ) ยืนยันปัญหา lot-size เดิมของ **Standard** account
+(risk ~$10-20/ไม้ที่ position ขั้นต่ำสุด) แต่นี่ไม่ใช่ spec ของบัญชีที่จะเทรดจริง —
+**ยังไม่สามารถเช็ค spec ของ Cent account จริงได้จนกว่าจะเปิดบัญชี Cent จริง** (ซึ่งมักไม่มี
+demo ให้เทส ต้องเปิดบัญชีจริงหรือหา broker อื่นที่มี Cent demo ถ้าต้องการเทสก่อน)
+
+**9. ETH/XRP บน VPS = freeze ระหว่างทำ XAU (2026-09-03)** — ตัดสินใจแล้ว, ยังไม่ได้ execute
+จริงบน VPS (รอ SSH key) — ดู `docs/XAU_LIVE_HANDOFF.md`
+
+**10. ตัด news/economic calendar filter ออกจาก scope ทั้งหมด (2026-09-03)** — ผู้ใช้ตัดสินใจ
+ไม่ทำ NFP/news blackout ในระบบนี้ ทั้ง P2 (calendar data source), P7 (news block ใน Risk
+Engine), และ P12 ("เว้นวัน NFP" ตอน paper trading) **ไม่ต้องทำแล้วทั้งหมด**
+
+⚠️ **ธงแดงที่ยกไว้ก่อนหน้านี้ยังไม่ถูกแก้ไข** — บรรทัด 412-414 ด้านบนระบุไว้ชัดว่า trading
+window 01:00–15:00 UTC (เวลาไทย) **ยังคาบเกี่ยว NFP release (12:30–13:30 UTC)** ดังนั้นการตัด
+news filter ออก = ระบบจะเปิด/ถือ position ข้าม NFP release ได้โดยไม่มีการป้องกันใด ๆ (ความเสี่ยง
+volatility spike/slippage สูงผิดปกติช่วงนั้น) นี่คือ trade-off ที่ผู้ใช้รับทราบและเลือกแล้ว
+ไม่ใช่สิ่งที่ตกหล่นจากการวิเคราะห์เดิม
+
 ### ยังเปิดอยู่ (ไม่ block P2 แต่ต้องตอบก่อน phase ที่ระบุ)
-- **ก่อน P6**: งบ LLM ต่อเดือน (เพดานสำหรับ call policy — R-7)
-- **ก่อน P6**: ETH/XRP track บน VPS ให้รันต่อคู่ขนาน หรือ freeze?
-- **ก่อน P8**: broker / ประเภทบัญชี / ทุน (ดูข้อ 2b)
+- ~~ก่อน P2/P7: economic calendar data source~~ — **ตัดออกจาก scope แล้ว (ข้อ 10 ด้านบน)**
+- ~~ก่อน P6: ETH/XRP track บน VPS ให้รันต่อคู่ขนาน หรือ freeze?~~ — **ตอบแล้ว: freeze (ข้อ 9)**
 
 ## 16. P6 Spec — AI Layer: Setup Quality Scorecard
 
@@ -610,7 +641,27 @@ scripts/research_scorecard_bucket_test.py   ข้อ 16.6.1
 
 **ยังไม่ implement โค้ดของ target architecture** ตาม §21 ("อย่า implement ก่อนส่ง
 Architecture/GAP Analysis ให้ review") คำถาม blocking ใน §15 ได้คำตอบครบแล้ว
-งานถัดไปคือ **P2 (XAU data pipeline: เพิ่ม M5/H4 + validation layer)**
+
+**P2 (XAU data pipeline: M5/H4 + validation layer + live-feed spike) เสร็จแล้ว** 2026-09-03:
+- `src/data/validation.py` (ใหม่) — gap/outlier/reconciliation/session-coverage checks,
+  ทดสอบด้วย `tests/test_data_validation.py` (9 เทส, รวม suite 61/61 เขียว)
+- `scripts/fetch_xau_dukascopy.py` — เพิ่ม `5m`/`4h` (fetch ตรงจาก Dukascopy ไม่ resample),
+  wire เข้า validation layer แทน print-only gap report เดิม
+- Refetch ครบ 5 TF บนเครื่องนี้แล้ว: M1 (7.38M แถว), M5 (1.51M), M15 (505.8k), H1 (127.4k),
+  H4 (33.7k) — validation เจอ anomaly จริงจำนวนน้อย (เช่น 2008 crisis, 2009 QE, 2013 taper
+  tantrum, 2016 Brexit, ช่วงวันหยุด thin-liquidity) ไม่ใช่ false-positive flood — cross-source
+  reconciliation (M5 vs M1-resample, H4 vs H1-resample) **ตรงกัน 100% ทั้ง 20 ปี**
+- `config/gold_spec.yaml` เพิ่ม `m5`/`h4` keys; `gold_harness.py` เพิ่ม `load_gold_data_all()`
+  (คืน dict 5 TF) โดยไม่แตะ `load_gold_data()` เดิม (9 `scripts/run_gold_r*.py` ยัง unpack
+  3-tuple `m15, h1, m1` ตามเดิม — สโมคเทสด้วย `run_gold_r1_orb.py` แล้วผ่าน ผลตรงกับที่
+  `docs/FINDINGS.md` บันทึกไว้เดิม ไม่ใช่งานวิจัยใหม่)
+- `scripts/validate_gold_data.py` (ใหม่) — CLI รัน validation จริงบนไฟล์ parquet ทั้ง 5 TF
+- `src/data/mt5_feed.py` (ใหม่, live-feed spike) — **ทดสอบจริงกับบัญชี Exness Standard demo**
+  (login 463906588) แล้ว: ดึง+validate ครบ 5 TF ผ่านทั้งหมด (0 error, มีแค่ warning ของ
+  quiet-window ที่คาดไว้). `requirements.txt` เพิ่ม `MetaTrader5` พร้อม platform marker
+  (`platform_system == "Windows"`) กัน VPS Linux พัง
+
+งานถัดไปคือ **P3 (Feature engine ขยายตาม §8 + `structure.py`)**
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |

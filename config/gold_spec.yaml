@@ -12,8 +12,10 @@ has_funding: false          # spot — do NOT apply crypto-style funding costs
 
 data:
   m1:  data/raw/XAUUSD_1m.parquet    # 7.4M rows — path resolution for triple-barrier
+  m5:  data/raw/XAUUSD_5m.parquet    # P2 (docs/XAU_ARCHITECTURE_AUDIT.md §10) — setup detection TF
   m15: data/raw/XAUUSD_15m.parquet   # 505k rows — signal timeframe
   h1:  data/raw/XAUUSD_1h.parquet    # 127k rows — higher-timeframe context
+  h4:  data/raw/XAUUSD_4h.parquet    # P2 — higher-level context TF
 
 # --- Cost assumptions (round trip = entry + exit), all in basis points of price ---
 costs:

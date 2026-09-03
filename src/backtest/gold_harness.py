@@ -65,6 +65,17 @@ def load_gold_data(spec: dict, start=None, end=None):
     return m15, h1, m1
 
 
+def load_gold_data_all(spec: dict, start=None, end=None) -> dict[str, pd.DataFrame]:
+    """Returns {'m1', 'm5', 'm15', 'h1', 'h4'} -> DataFrame for XAU/USD spot,
+    optionally sliced to [start, end]. This is the 5-timeframe entry point
+    added in P2 (docs/XAU_ARCHITECTURE_AUDIT.md §10) for the data-validation
+    pass and future (P3) feature-engine work — `load_gold_data()` above stays
+    frozen at its original (m15, h1, m1) 3-tuple contract since it's unpacked
+    positionally by every scripts/run_gold_r*.py research script.
+    """
+    return {k: _read(v, start, end) for k, v in spec["data"].items()}
+
+
 # --------------------------------------------------------------------------- #
 # Signal contract
 # --------------------------------------------------------------------------- #
