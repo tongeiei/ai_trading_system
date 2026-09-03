@@ -32,11 +32,12 @@ def synthetic_data():
     # the 60-day ATR percentile window (5760 bars) plus some margin
     m15 = _make_synthetic_ohlc(6200, "15min", "2024-01-01")
     h1 = _make_synthetic_ohlc(1600, "1h", "2024-01-01")
-    return m15, h1
+    h4 = _make_synthetic_ohlc(400, "4h", "2024-01-01")
+    return m15, h1, h4
 
 
 def test_features_unchanged_when_future_bar_dropped(synthetic_data):
-    m15, h1 = synthetic_data
+    m15, h1, h4 = synthetic_data
 
     full = build_features(m15, h1)
     truncated = build_features(m15.iloc[:-1].copy(), h1)
@@ -55,7 +56,7 @@ def test_features_unchanged_when_future_bar_dropped(synthetic_data):
 
 
 def test_features_unchanged_when_future_h1_bar_dropped(synthetic_data):
-    m15, h1 = synthetic_data
+    m15, h1, h4 = synthetic_data
 
     full = build_features(m15, h1)
     # drop the last H1 bar; only M15 timestamps that were as-of-joined to it should differ,
@@ -70,10 +71,24 @@ def test_features_unchanged_when_future_h1_bar_dropped(synthetic_data):
         )
 
 
+def test_features_unchanged_when_future_h4_bar_dropped(synthetic_data):
+    m15, h1, h4 = synthetic_data
+
+    full = build_features(m15, h1, h4)
+    truncated = build_features(m15, h1, h4.iloc[:-1].copy())
+
+    feature_cols = [c for c in full.columns if c.startswith("f")]
+    for col in feature_cols:
+        pd.testing.assert_series_equal(
+            full[col], truncated[col], check_names=False,
+            obj=f"feature {col} changed when a future H4 bar was dropped -- H4 look-ahead bias",
+        )
+
+
 def test_all_features_shifted_by_at_least_one_bar(synthetic_data):
     """Feature at row i must be computable from data available at bar i-1's
     close — i.e. row 0 (no prior bar) must be entirely NaN."""
-    m15, h1 = synthetic_data
+    m15, h1, h4 = synthetic_data
     features = build_features(m15, h1)
     feature_cols = [c for c in features.columns if c.startswith("f")]
     assert features.loc[0, feature_cols].isna().all(), (

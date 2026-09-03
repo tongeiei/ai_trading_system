@@ -312,7 +312,7 @@ Dockerfile, docker-compose.yml, requirements.txt / pyproject.toml
 | P0 (งานบ้าน) | commit track B ที่ยัง untracked + `requirements.txt` + pivot notice รอบใหม่ | `git status` สะอาด, venv reproduce ได้ |
 | P1 | Audit (ไฟล์นี้) | ✅ เสร็จ รอ review |
 | P2 | XAU/USD data pipeline: เพิ่ม M5 + H4, validation layer, live-feed spike (~~calendar~~ ตัดออก, §15 ข้อ 10) | ✅ เสร็จ 2026-09-03 — ครบ 5 TF (M1/M5/M15/H1/H4), validation test ผ่าน (ดู §17) |
-| P3 | Feature engine ขยายตาม §8 + `structure.py` (ยก detector จาก R14/R15/R17) | leakage test ผ่านทุก feature ใหม่, `f12_spread_ratio` มีค่าจริง |
+| P3 | Feature engine ขยายตาม §8 + `structure.py` (ยก detector จาก R14/R15/R17) | ✅ เสร็จ 2026-09-03 — leakage test ผ่านทุก feature ใหม่ (ดู §17). `f12_spread_ratio` **ยังไม่มีค่าจริงสำหรับ backtest** — ไม่มี historical spread series จริงให้ใช้เลย (crypto/gold ทั้งคู่), เก็บเป็น NaN ต่อไปตามเดิม รอ live wiring |
 | P4 | Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist | regime + confidence + features + timestamp เขียนลง DB ทุกแท่ง |
 | P5 | Setup scanner + registry + status lifecycle | setup ทุกตัวมีสถานะ RESEARCH/CANDIDATE/VALIDATED/PAPER/LIVE/REJECTED |
 | P6 | AI integration (Haiku screen → Sonnet analyst, structured JSON) | AI down = NO NEW TRADE, ทุก call ถูก log, **ยังไม่ต่อ execution** |
@@ -661,7 +661,32 @@ Architecture/GAP Analysis ให้ review") คำถาม blocking ใน §1
   quiet-window ที่คาดไว้). `requirements.txt` เพิ่ม `MetaTrader5` พร้อม platform marker
   (`platform_system == "Windows"`) กัน VPS Linux พัง
 
-งานถัดไปคือ **P3 (Feature engine ขยายตาม §8 + `structure.py`)**
+**P3 (Feature engine ขยายตาม §8 + `structure.py`) เสร็จแล้ว** 2026-09-03:
+- `src/features/structure.py` (ใหม่) — canonical, causal-safe เวอร์ชันของ detector ที่
+  ยกมาจาก strategy ที่ falsified แล้ว (ตัด entry/exit/SL/TP logic ทิ้งทั้งหมด):
+  `compute_market_structure()` (BOS/CHoCH, จาก `gold_r15_choch.py`), `compute_fvg_state()`
+  (จาก `gold_r17_fvg.py`), `compute_liquidity_sweep_state()` (จาก `gold_r14_fake_zone.py`),
+  `compute_wick_metrics()` (จาก `gold_r11_wick_fill.py`) — รวมเป็น `_pivot_highs`/`_pivot_lows`
+  ตัวเดียว (เดิม duplicate byte-for-byte 2 ที่)
+- `src/features/engine.py` — เพิ่ม f13-f35 (ADX(M15), EMA200 + slope, RSI14, session
+  VWAP, day-of-week, swing distance, BOS/CHoCH, FVG state, liquidity sweep, wick/body
+  metrics, H4 trend/ADX context) แบบ **additive ล้วน** — `build_features(m15, h1, h4=None)`
+  เพิ่ม param `h4` เป็น optional/keyword, 2 caller เดิม (`signal_service.py`,
+  `gold_harness.py`) ไม่ต้องแก้ ยังเรียกแบบ 2-arg ได้เหมือนเดิม f01-f10/f12 ไม่แตะเลย
+  (สำคัญเพราะไฟล์นี้ shared กับ live ETH/XRP)
+- `f12_spread_ratio` **ยังคง NaN สำหรับ backtest ต่อไป** — เช็คแล้วไม่มี historical
+  per-bar spread จริงที่ไหนเลย (ไม่มีใน Dukascopy parquet, ไม่มีใน `gold_spec.yaml`,
+  ไม่มีใน ccxt) มีแค่ MT5 tick struct ที่มี field `spread` แต่ `mt5_feed.py` drop ทิ้งอยู่
+  ตอนนี้ — เป็น gap ที่จะปิดได้เฉพาะ live เท่านั้น ไม่ใช่ backtest ไม่ได้ fake ด้วยค่าคงที่
+- Tests: `tests/test_features_structure.py` (ใหม่, 9 เทส) + `tests/test_leakage.py`
+  เพิ่ม `test_features_unchanged_when_future_h4_bar_dropped` — รวม suite **71/71 เขียว**
+- Sanity check บนข้อมูล XAU M15 จริง 20k แท่งล่าสุด: ทุก feature ใหม่กระจายค่าไม่ผิดปกติ
+  (ไม่ constant, ไม่ all-NaN) — `f21_trend_state` UP/DOWN สมดุลกัน, `f23_choch_fired`
+  ยิง 359 ครั้ง, `f30_liquidity_sweep_dir` ยิง 579 ครั้ง จาก 20k แท่ง — สมเหตุสมผล
+- Smoke test `scripts/run_gold_r1_orb.py` (เรียก `build_features(m15, h1)` แบบ 2-arg
+  ตรงเดิม) รันผ่านไม่มี error, ไม่กระทบ path เดิมของ gold backtest
+
+งานถัดไปคือ **P4 (Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist)**
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |

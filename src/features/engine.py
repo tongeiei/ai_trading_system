@@ -11,6 +11,13 @@ of London/NY/Asia differs.
 import numpy as np
 import pandas as pd
 
+from src.features.structure import (
+    compute_fvg_state,
+    compute_liquidity_sweep_state,
+    compute_market_structure,
+    compute_wick_metrics,
+)
+
 SESSION_HOURS_UTC = {
     "ASIA": (0, 8),
     "LONDON": (8, 13),
@@ -55,10 +62,34 @@ def _adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return dx.ewm(alpha=1 / period, adjust=False).mean()
 
 
-def build_features(m15: pd.DataFrame, h1: pd.DataFrame) -> pd.DataFrame:
-    """m15/h1: columns [time_utc, open, high, low, close, volume], time-sorted.
-    Returns a feature frame aligned to m15 bar-close times, with h1 context
-    merged via as-of (backward) join so no future H1 bar ever leaks in.
+def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100 - (100 / (1 + rs))
+
+
+def _session_vwap(df: pd.DataFrame) -> pd.Series:
+    """Typical-price VWAP, reset every UTC calendar day (no lookahead: cumulative
+    sums only use bars up to and including the current one)."""
+    typical = (df["high"] + df["low"] + df["close"]) / 3
+    day = df["time_utc"].dt.floor("D")
+    pv = (typical * df["volume"]).groupby(day).cumsum()
+    vol = df["volume"].groupby(day).cumsum()
+    return pv / vol.replace(0, np.nan)
+
+
+def build_features(m15: pd.DataFrame, h1: pd.DataFrame, h4: pd.DataFrame | None = None) -> pd.DataFrame:
+    """m15/h1/h4: columns [time_utc, open, high, low, close, volume], time-sorted.
+    Returns a feature frame aligned to m15 bar-close times, with h1/h4 context
+    merged via as-of (backward) join so no future H1/H4 bar ever leaks in.
+
+    h4 is optional (default None) so existing 2-arg callers (src/live/signal_service.py,
+    src/backtest/gold_harness.py) keep working unmodified -- f34/f35 are NaN when
+    h4 is not supplied.
     """
     m15 = m15.sort_values("time_utc").reset_index(drop=True).copy()
     h1 = h1.sort_values("time_utc").reset_index(drop=True).copy()
@@ -66,7 +97,11 @@ def build_features(m15: pd.DataFrame, h1: pd.DataFrame) -> pd.DataFrame:
     # --- M15-native indicators ---
     m15["ema20"] = _ema(m15["close"], 20)
     m15["ema50"] = _ema(m15["close"], 50)
+    m15["ema200"] = _ema(m15["close"], 200)
     m15["atr14"] = _atr(m15, 14)
+    m15["adx14"] = _adx(m15, 14)
+    m15["rsi14"] = _rsi(m15["close"], 14)
+    m15["vwap"] = _session_vwap(m15) if "volume" in m15.columns else np.nan
 
     f = pd.DataFrame(index=m15.index)
     f["time_utc"] = m15["time_utc"]
@@ -87,6 +122,42 @@ def build_features(m15: pd.DataFrame, h1: pd.DataFrame) -> pd.DataFrame:
     rng = (m15["high"] - m15["low"]).replace(0, np.nan)
     f["f10_candle_body_ratio"] = body / rng
 
+    f["f13_adx14_m15"] = m15["adx14"]
+    f["f14_dist_ema200_atr"] = (m15["close"] - m15["ema200"]) / m15["atr14"]
+    ema200_slope = m15["ema200"] - m15["ema200"].shift(12)  # ~3h of M15 bars
+    f["f15_ema200_slope_atr"] = ema200_slope / m15["atr14"]
+    f["f16_rsi14"] = m15["rsi14"]
+    f["f17_dist_vwap_atr"] = (m15["close"] - m15["vwap"]) / m15["atr14"]
+    f["f18_day_of_week"] = m15["time_utc"].dt.dayofweek
+
+    # --- market-structure features (src/features/structure.py, lifted from
+    # falsified gold strategies R11/R14/R15/R17 -- see docs/XAU_ARCHITECTURE_AUDIT.md
+    # §8 NEW-3). Symbol-agnostic: computed for crypto too, harmless (additive columns,
+    # no existing consumer reads by position/count -- see P3 plan).
+    struct = compute_market_structure(m15)
+    f["f19_dist_swing_high_atr"] = (struct["last_swing_high"] - m15["close"]) / struct["atr"]
+    f["f20_dist_swing_low_atr"] = (m15["close"] - struct["last_swing_low"]) / struct["atr"]
+    trend_code = struct["trend"].map({"UP": 1, "DOWN": -1, "UNKNOWN": 0})
+    f["f21_trend_state"] = trend_code
+    f["f22_bos_fired"] = struct["bos_dir"].map({"UP": 1, "DOWN": -1}).fillna(0)
+    f["f23_choch_fired"] = struct["choch_dir"].map({"UP": 1, "DOWN": -1}).fillna(0)
+
+    fvg = compute_fvg_state(m15)
+    f["f24_bull_fvg_active"] = fvg["bull_gap_active"].astype(float)
+    f["f25_dist_bull_fvg_atr"] = (m15["close"] - fvg["bull_gap_high"]) / fvg["atr"]
+    f["f26_bars_since_bull_fvg"] = fvg["bars_since_bull_gap"]
+    f["f27_bear_fvg_active"] = fvg["bear_gap_active"].astype(float)
+    f["f28_dist_bear_fvg_atr"] = (fvg["bear_gap_low"] - m15["close"]) / fvg["atr"]
+    f["f29_bars_since_bear_fvg"] = fvg["bars_since_bear_gap"]
+
+    sweep = compute_liquidity_sweep_state(m15)
+    f["f30_liquidity_sweep_dir"] = sweep["sweep_fired_dir"].map({"UP": 1, "DOWN": -1}).fillna(0)
+
+    wick = compute_wick_metrics(m15)
+    f["f31_wick_lower_atr"] = wick["lower_wick_atr"]
+    f["f32_wick_upper_atr"] = wick["upper_wick_atr"]
+    f["f33_body_atr"] = wick["body_atr"]
+
     f["session"] = m15["time_utc"].dt.hour.map(_session_for_hour)
 
     # --- H1 context, as-of backward join (only sees H1 bars fully closed before this M15 bar) ---
@@ -105,7 +176,27 @@ def build_features(m15: pd.DataFrame, h1: pd.DataFrame) -> pd.DataFrame:
 
     # spread feature (f12) needs live spread data — placeholder until execution
     # layer provides it; NaN here is intentional, filled at signal time in live/backtest.
+    # No genuine historical per-bar spread series exists for backtest (crypto or gold)
+    # as of P3 -- this stays NaN for all backtests; only a future live wiring
+    # (src/data/mt5_feed.py currently drops MT5's tick-level spread field) could fill it.
     f["f12_spread_ratio"] = np.nan
+
+    # --- H4 context, as-of backward join (optional -- NaN when h4 not supplied) ---
+    if h4 is not None:
+        h4c = h4.sort_values("time_utc").reset_index(drop=True).copy()
+        h4c["ema50_h4"] = _ema(h4c["close"], 50)
+        h4c["ema200_h4"] = _ema(h4c["close"], 200)
+        h4c["atr14_h4"] = _atr(h4c, 14)
+        h4c["adx14_h4"] = _adx(h4c, 14)
+        joined_h4 = pd.merge_asof(
+            f[["time_utc"]], h4c[["time_utc", "ema50_h4", "ema200_h4", "atr14_h4", "adx14_h4"]],
+            on="time_utc", direction="backward",
+        )
+        f["f34_h4_trend_atr"] = (joined_h4["ema50_h4"] - joined_h4["ema200_h4"]) / joined_h4["atr14_h4"]
+        f["f35_adx14_h4"] = joined_h4["adx14_h4"]
+    else:
+        f["f34_h4_trend_atr"] = np.nan
+        f["f35_adx14_h4"] = np.nan
 
     feature_cols = [c for c in f.columns if c.startswith("f")]
     # rule #1: every feature must reflect only the bar BEFORE the decision point
