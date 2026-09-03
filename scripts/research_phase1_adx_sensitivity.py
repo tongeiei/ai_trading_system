@@ -1,4 +1,4 @@
-"""Phase 1 of docs/PLAN_CUSTOM.md — regime filter (ADX threshold) sensitivity.
+"""Phase 1 of docs/research/PLAN_CUSTOM.md — regime filter (ADX threshold) sensitivity.
 
 Tests whether the live ADX>35 TREND-regime cutoff is unnecessarily
 restrictive, per PLAN_CUSTOM research question 2. Per the Phase 0 funnel

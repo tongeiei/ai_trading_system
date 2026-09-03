@@ -1,4 +1,4 @@
-"""Phase 4 of docs/PLAN_CUSTOM.md — RANGE opportunity research, per
+"""Phase 4 of docs/research/PLAN_CUSTOM.md — RANGE opportunity research, per
 research question 5.
 
 PLAN_CUSTOM: "The current V0 does not trade RANGE. Research whether the

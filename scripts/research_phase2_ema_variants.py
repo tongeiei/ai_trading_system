@@ -1,4 +1,4 @@
-"""Phase 2 of docs/PLAN_CUSTOM.md — EMA20 pullback definition variants.
+"""Phase 2 of docs/research/PLAN_CUSTOM.md — EMA20 pullback definition variants.
 
 Tests whether the entry TRIGGER definition (not the regime filter, not
 SL/TP, not risk) is too narrow, per the Phase 0 funnel finding that the

@@ -1,4 +1,4 @@
-"""Phase 6 of docs/PLAN_CUSTOM.md — trade duration analysis, research
+"""Phase 6 of docs/research/PLAN_CUSTOM.md — trade duration analysis, research
 question 7.
 
 Measures MFE (max favorable excursion), MAE (max adverse excursion), time

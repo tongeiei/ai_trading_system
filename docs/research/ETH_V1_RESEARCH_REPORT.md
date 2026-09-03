@@ -1,6 +1,6 @@
 # ETH V1 Research Report — Increasing Opportunity Without Degrading Edge
 
-Living document, driven by [../PLAN_CUSTOM.md](../PLAN_CUSTOM.md). Updated
+Living document, driven by [PLAN_CUSTOM.md](PLAN_CUSTOM.md). Updated
 incrementally as each research phase completes. The live V0 config
 ([../STRATEGY_RISK_SPEC.md](../STRATEGY_RISK_SPEC.md)) is the unchanged
 control group throughout — nothing here has been promoted to production.

@@ -12,7 +12,7 @@ Version 0.1 (design only, no code)
 - Edge หา ได้ง่ายกว่า (ตลาดใหม่กว่า, inefficiency มากกว่า institutional forex)
 - แลกกับ: ไม่มี "EA" ให้พึ่งพา (Risk Manager ต้องอยู่ใน Python execution service เอง), regime เปลี่ยนเร็วกว่า, ไม่มี session gap, testnet ให้ fill/spread เชื่อไม่ได้ (ต้องมีชั้น mainnet-shadow เพิ่ม)
 
-**สถานะเอกสาร:** เนื้อหาหลัก (§0–§21, §22-27 เดิม) ยังเป็น **XAUUSD/MT5 version** และเก็บไว้เป็นข้อมูลอ้างอิง/ future branch — **Phase P0 ใหม่ (Binance) อยู่ท้ายเอกสารนี้** และ `docs/TASKS.md` ปรับ P0 ใหม่แล้ว ให้เริ่มจากตรงนั้น ส่วนที่เหลือ (feature list, risk management, calibration, backtesting) แนวคิดเดิมยังใช้ได้เกือบทั้งหมด เปลี่ยนแค่ execution/data layer — จะพอร์ตทีละหัวข้อเมื่อถึง phase นั้นจริง แทนที่จะ rewrite ทั้งฉบับตอนนี้ (ประหยัดเวลา, ป้องกันเขียนทิ้งของที่ยังไม่ได้ใช้)
+**สถานะเอกสาร:** เนื้อหาหลัก (§0–§21, §22-27 เดิม) ยังเป็น **XAUUSD/MT5 version** และเก็บไว้เป็นข้อมูลอ้างอิง/ future branch — **Phase P0 ใหม่ (Binance) อยู่ท้ายเอกสารนี้** ให้เริ่มจากตรงนั้น (`docs/TASKS.md` เคยปรับ P0 ใหม่ไว้แต่ถูกลบแล้ว 2026-09-03 เพราะ superseded โดย `docs/HANDOFF.md`/`docs/XAU_ARCHITECTURE_AUDIT.md`) ส่วนที่เหลือ (feature list, risk management, calibration, backtesting) แนวคิดเดิมยังใช้ได้เกือบทั้งหมด เปลี่ยนแค่ execution/data layer — จะพอร์ตทีละหัวข้อเมื่อถึง phase นั้นจริง แทนที่จะ rewrite ทั้งฉบับตอนนี้ (ประหยัดเวลา, ป้องกันเขียนทิ้งของที่ยังไม่ได้ใช้)
 
 **Testing protocol สำหรับ crypto (5 ชั้น) แทนที่ §16-17 เดิม:**
 ```

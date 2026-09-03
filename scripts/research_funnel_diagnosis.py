@@ -1,4 +1,4 @@
-"""Phase 0 of docs/PLAN_CUSTOM.md — opportunity funnel diagnosis for V0.
+"""Phase 0 of docs/research/PLAN_CUSTOM.md — opportunity funnel diagnosis for V0.
 
 Read-only research script. Does NOT import or modify src/strategy/v0_rules.py's
 live thresholds — it re-derives the same funnel stages from features/regime

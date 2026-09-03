@@ -1,4 +1,4 @@
-"""Phase 3 of docs/PLAN_CUSTOM.md — independent validation of a second
+"""Phase 3 of docs/research/PLAN_CUSTOM.md — independent validation of a second
 TREND strategy candidate, per research question 4.
 
 PLAN_CUSTOM: "The existing breakout strategy may be used as a starting

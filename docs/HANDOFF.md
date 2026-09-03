@@ -108,8 +108,6 @@ refresh เอง (cache 30 วินาที ไม่มี auto-refresh loop
   สมมติฐานจาก cost model ของ backtest ไม่ได้วัดจากของจริง
 - ยังไม่มีการเช็ค robustness จากการตัด 2 เดือนที่ผลดีผิดปกติ (ส.ค. 2025,
   ส.ค. 2026) ออกจาก walk-forward — เคย flag ไว้เป็นขั้นต่อไป แต่ยังไม่ได้ทำ
-- `docs/TASKS.md` ยังสะท้อนโครงสร้าง phase ของยุค MT5/XAU เดิมอยู่ — ยังไม่ได้
-  เขียนใหม่สำหรับการปรับทิศทางมา crypto นอกเหนือจากส่วน P0
 - Slippage bug ที่แก้ไปแล้ว (`src/backtest/costs.py` เดิมใช้ 0.5 USD/side คงที่
   ผิดกับ coin ราคาต่ำ) ตอนนี้เป็นสัดส่วนราคาแล้ว (`SLIPPAGE_BPS`) และ ETH edge
   ถูก re-confirm แล้วว่าไม่เปลี่ยน — ดู FINDINGS.md

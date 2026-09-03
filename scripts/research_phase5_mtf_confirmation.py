@@ -1,4 +1,4 @@
-"""Phase 5 of docs/PLAN_CUSTOM.md — multi-timeframe confirmation, research
+"""Phase 5 of docs/research/PLAN_CUSTOM.md — multi-timeframe confirmation, research
 question 6.
 
 PLAN_CUSTOM lists 4 variants:

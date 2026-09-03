@@ -181,7 +181,7 @@ ccxt มองไม่เห็น (`fetch_open_algo_orders`)
 | D1 | **Risk limits ตาม §11 ยังไม่มีจริง** — ไม่มี daily loss, max DD, max consecutive losses, max simultaneous risk, kill switch | สูงมาก — ระบบ "ไม่มีเบรก" นอกจาก SL ต่อไม้ |
 | D2 | **Config ฝังอยู่ในโค้ด** — `SYMBOLS` list, `EV_THRESHOLD_R`, `SYMBOL_STATS`, `WINRATE_THRESHOLD`, `MAX_HOLD`, `SL_ATR_MULT` กระจายเป็น module constant | สูง — ขัด §18 โดยตรง, แยก dev/paper/live ไม่ได้ |
 | D3 | **Track B ยังไม่ commit** (gold harness + 8 strategies + spec ทั้งหมด untracked) | สูง — งาน 8 rounds เสี่ยงหายถ้าเครื่องพัง |
-| D4 | `PROJECT_PLAN.md` (92KB) และ `docs/TASKS.md` ยังเป็นยุค MT5/XAU เดิม ขัดกับ `HANDOFF.md` | กลาง — ทำให้ session ใหม่สับสน |
+| D4 | `PROJECT_PLAN.md` (92KB) ยังเป็นยุค MT5/XAU เดิม ขัดกับ `HANDOFF.md` (`docs/TASKS.md` เคยมีปัญหาเดียวกัน — ลบไปแล้ว 2026-09-03) | กลาง — ทำให้ session ใหม่สับสน |
 | D5 | `f12_spread_ratio` เป็น NaN ถาวร (placeholder ไม่เคยถูกเติม) | กลาง — feature ที่โฆษณาไว้ 12 ตัว ใช้จริง 11 |
 | D6 | `detect_and_close_organic_exits` / `close_expired_positions` query `trades` **โดยไม่กรอง symbol** แล้วปิดด้วยราคาของ symbol ที่ส่งเข้ามา | กลาง-สูง — multi-symbol แล้วจะปิดผิดตัว (ตอนนี้รอด เพราะไม่เคยมีไม้เปิดพร้อมกัน) |
 | D7 | ไม่มี Alembic / DB backup / retention | กลาง |
@@ -267,7 +267,7 @@ ccxt มองไม่เห็น (`fetch_open_algo_orders`)
 | `src/dashboard/app.py` | multi-instrument, panel regime/AI/risk |
 | `src/backtest/gold_harness.py` | ต่อ setup registry + status lifecycle |
 | `config/gold_spec.yaml` | ผสานเข้ากับ `config/xau.yaml` โครงใหม่ |
-| `docs/TASKS.md`, `PROJECT_PLAN.md` | ใส่ pivot notice รอบใหม่ (XAU กลับมา) กันสับสน |
+| `PROJECT_PLAN.md` | ใส่ pivot notice รอบใหม่ (XAU กลับมา) กันสับสน (`docs/TASKS.md` เคยอยู่ในรายการนี้ — ลบไปแล้ว 2026-09-03 แทนที่จะแก้) |
 
 ### Create
 ```
