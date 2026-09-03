@@ -104,6 +104,18 @@ regime_states = Table(
 )
 
 
+# setups: durable snapshot of src/scanner/registry.py::REGISTRY (XAU P5) --
+# written by sync_registry_to_db(), a queryable record for later phases
+# (dashboard, promotion workflow). Not written to by any live path.
+setups = Table(
+    "setups", metadata,
+    Column("setup_id", String, primary_key=True),
+    Column("market", String), Column("category", String), Column("status", String),
+    Column("entry_point", String), Column("evidence", String),
+    Column("updated_at_utc", DateTime(timezone=True)),
+)
+
+
 def get_engine(db_path: str = "data/trading.db"):
     return create_engine(f"sqlite:///{db_path}")
 

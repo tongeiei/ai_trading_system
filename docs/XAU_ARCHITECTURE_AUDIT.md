@@ -314,7 +314,7 @@ Dockerfile, docker-compose.yml, requirements.txt / pyproject.toml
 | P2 | XAU/USD data pipeline: เพิ่ม M5 + H4, validation layer, live-feed spike (~~calendar~~ ตัดออก, §15 ข้อ 10) | ✅ เสร็จ 2026-09-03 — ครบ 5 TF (M1/M5/M15/H1/H4), validation test ผ่าน (ดู §17) |
 | P3 | Feature engine ขยายตาม §8 + `structure.py` (ยก detector จาก R14/R15/R17) | ✅ เสร็จ 2026-09-03 — leakage test ผ่านทุก feature ใหม่ (ดู §17). `f12_spread_ratio` **ยังไม่มีค่าจริงสำหรับ backtest** — ไม่มี historical spread series จริงให้ใช้เลย (crypto/gold ทั้งคู่), เก็บเป็น NaN ต่อไปตามเดิม รอ live wiring |
 | P4 | Regime engine: TREND/RANGE/EXPANSION/HIGH_VOL/UNKNOWN + persist | ✅ เสร็จ 2026-09-03 — regime + confidence + features + timestamp เขียนลง DB ทุกแท่งจริง (ดู §17) |
-| P5 | Setup scanner + registry + status lifecycle | setup ทุกตัวมีสถานะ RESEARCH/CANDIDATE/VALIDATED/PAPER/LIVE/REJECTED |
+| P5 | Setup scanner + registry + status lifecycle | ✅ เสร็จ 2026-09-03 — setup ทุกตัวมีสถานะครบ (ดู §17) |
 | P6 | AI integration (Haiku screen → Sonnet analyst, structured JSON) | AI down = NO NEW TRADE, ทุก call ถูก log, **ยังไม่ต่อ execution** |
 | P7 | Risk Engine ครบตาม §11 + kill switch (~~news/NFP block~~ ตัดออก, §15 ข้อ 10) | unit test ครบทุก limit, veto AI ได้จริง |
 | P8 | MT5 (หรือ broker API) execution adapter | order flow test บน demo account ผ่าน |
@@ -716,7 +716,39 @@ Architecture/GAP Analysis ให้ review") คำถาม blocking ใน §1
   ประเมินคุณค่าของ regime engine ตัวใหม่ — Setup Scanner/AI layer ที่จะใช้งานมันจริง
   คือ P5 ขึ้นไป
 
-งานถัดไปคือ **P5 (Setup scanner + registry + status lifecycle)**
+**P5 (Setup scanner + registry + status lifecycle) เสร็จแล้ว** 2026-09-03:
+- `src/scanner/registry.py` (ใหม่) — `REGISTRY` รวบรวม setup ทั้ง 11 ตัวใน
+  `src/strategy/` (v0_rules ETH/XRP + crypto breakout/mean_reversion + gold R1/R2/R5/
+  R8/R11/R14/R15/R17) แต่ละตัวมี `status` (RESEARCH/CANDIDATE/VALIDATED/PAPER/
+  LIVE/REJECTED) ที่ดึงจาก doc ที่มีอยู่แล้ว (`docs/HANDOFF.md`, `docs/FINDINGS.md`,
+  `docs/research/GOLD_HANDOFF.md`, `CLAUDE.md`) **ไม่ได้ re-run หรือ re-judge
+  backtest ใดๆ ใหม่** — v0_rules ETH=LIVE, v0_rules XRP=PAPER, ที่เหลือ 10 ตัว
+  REJECTED (8 gold + crypto breakout/mean_reversion) ตรงกับ finding ที่บันทึกไว้แล้ว
+- `src/scanner/setups/{fvg,liquidity_sweep,choch}.py` (ใหม่) — adapter 3 ตัว
+  (ครอบคลุม R17/R14/R15) ที่เรียก `src/features/structure.py` (จาก P3) โดยตรง
+  **ไม่ใช่** falsified `generate_r*_signals()` ที่มี SL/TP/session logic ฝังอยู่ —
+  เพื่อพิสูจน์ว่า scanner mechanism ทำงานจริง end-to-end setup อีก 9 ตัวที่เหลือ
+  (รวม v0_rules ที่ live อยู่) เป็น metadata-only (`scannable=False`) — **ไม่มีโค้ด
+  scanner เรียก `src/live/` หรือ `src/strategy/v0_rules.py` เลย**
+- `src/scanner/__init__.py::scan(m15, statuses=(...))` — default statuses
+  `("VALIDATED","PAPER","LIVE")` คืน `{}` เพราะยังไม่มี gold setup ไหน VALIDATED
+  และ crypto entries ที่ LIVE/PAPER ยังไม่ wire — **เป็นพฤติกรรมที่ถูกต้องตาม risk
+  mitigation ที่ตั้งใจไว้** (ห้าม setup ที่ยังไม่ VALIDATED ขึ้น LIVE) ไม่ใช่บั๊ก
+- `src/data/db.py` เพิ่มตาราง `setups` (ใหม่ ไม่แตะตารางเดิม) — เขียนโดย
+  `sync_registry_to_db()` เป็น durable snapshot ของ registry สำหรับ dashboard/
+  promotion workflow ในเฟสถัดไป (ยังไม่ใช่ promotion workflow เอง)
+- Sanity check บนข้อมูล XAU M15 จริง 20k แท่งล่าสุด (`statuses=("REJECTED",)`):
+  R14 ยิง 578 ครั้ง, R15 ยิง 358 ครั้ง, R17 ยิง 981 ครั้ง จาก 20k แท่ง — กระจายตัว
+  สมเหตุสมผล ไม่มี adapter ไหน degenerate
+- Tests: `tests/test_scanner_registry.py` (ใหม่, 8 เทส รวม DB round-trip +
+  idempotency) — suite รวม **88/88 เขียว**
+- ยืนยันว่าไม่กระทบ live path: ไม่มีโค้ดใน `src/live/` import `src.scanner`,
+  `src/regime/rules.py`/`src/strategy/v0_rules.py` ไม่มี diff เลย (`git diff` เปล่า)
+- Scope ที่ตั้งใจไม่ทำใน P5 นี้: ไม่มีงานวิจัย edge ใหม่ (setup ทุกตัว REJECTED ตาม
+  finding เดิม), ไม่ wire scanner เข้า live execution path ใดๆ, ไม่มี promotion
+  workflow (แค่วางฐานข้อมูลไว้), ไม่เขียน adapter ให้ setup อีก 9 ตัวที่เหลือ
+
+งานถัดไปคือ **P6 (Setup Quality Scorecard — deterministic 6 ช่อง + Macro AI, ดู §16)**
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |
