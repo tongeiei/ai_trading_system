@@ -9,8 +9,9 @@
 ## เป้าหมายของ track นี้
 
 เตรียมโครงสร้างพื้นฐาน (broker, บัญชี, เครื่อง, MT5 connectivity) ให้พร้อมสำหรับเทรด
-XAU/USD live ตามลำดับ phase ใน `docs/XAU_ARCHITECTURE_AUDIT.md` §10 (P0-P13) — **ตอนนี้
-อยู่ในขั้น "เตรียมของก่อน" ตามคำสั่งผู้ใช้ 2026-09-02 (ยังไม่เริ่มแก้/เขียนโค้ด P2)**
+XAU/USD live ตามลำดับ phase ใน `docs/XAU_ARCHITECTURE_AUDIT.md` §10 (P0-P13) — เริ่มจาก
+"เตรียมของก่อน" ตามคำสั่งผู้ใช้ 2026-09-02 แล้วเริ่มเขียนโค้ดจริงตั้งแต่ **P2 (เสร็จแล้ว
+2026-09-03)** เป็นต้นไป
 
 ## การตัดสินใจที่ล็อกแล้ว (2026-09-02, แก้ไข 2026-09-03)
 
@@ -81,10 +82,11 @@ XAU/USD live ตามลำดับ phase ใน `docs/XAU_ARCHITECTURE_AUDIT.
       `docs/XAU_ARCHITECTURE_AUDIT.md` §15 ข้อ 10) — ⚠️ trading window เดิม
       (01:00–15:00 UTC) ยังคาบเกี่ยว NFP release (12:30–13:30 UTC) โดยไม่มีการป้องกันใด ๆ
       อีกต่อไป เป็น trade-off ที่รับทราบแล้ว ไม่ใช่ของตกหล่น
-- [ ] ยังไม่เริ่ม **P2** (XAU data pipeline refactor: เพิ่ม M5/H4 + validation layer) — รอ
-      symbol-spec check บน Exness Standard ให้เสร็จก่อน ตาม §15 ของ audit doc
-      (broker/บัญชี audit ผูกไว้กับ P8 แต่ในทางปฏิบัติควรปิดก่อน เพราะกระทบ
-      position-sizing math ตั้งแต่ P2)
+- [x] **P2** (XAU data pipeline: เพิ่ม M5/H4 + validation layer + MT5 live-feed spike)
+      — **เสร็จแล้ว 2026-09-03** ดู `docs/XAU_ARCHITECTURE_AUDIT.md` §17 รายละเอียด
+      (`src/data/validation.py`, `src/data/mt5_feed.py`, `scripts/validate_gold_data.py`,
+      ครบ 5 timeframe M1/M5/M15/H1/H4, tests ผ่าน) — Cent-account spec check ยังค้าง
+      แยกเป็นรายการด้านบน ไม่ได้ block P2
 
 ## อ้างอิง
 
