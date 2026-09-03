@@ -773,8 +773,43 @@ bucket test, shadow mode logging ยังไม่ได้ทำ):
 - Tests: `tests/test_ai_analyst.py` (ใหม่, 11 เทส, mock `requests.post` ทั้งหมด
   ไม่มี network call จริง) — suite รวม **99/99 เขียว**
 
-งานถัดไปคือ **P6 ส่วนที่เหลือ** (Setup Quality Scorecard — deterministic 6 ช่อง +
-bucket test ก่อนเสมอ ตาม §16.6 ข้อ 1 + shadow-mode logging, ดู §16)
+**P6 §16.6 ข้อ 1 (bucket test) ทำแล้ว** 2026-09-03 — ผล**ก้ำกึ่ง ไม่ใช่ผ่านสะอาด**:
+- `src/ai/scorecard.py` (ใหม่) — 6 ช่อง deterministic (Trend/Structure/Momentum/
+  Volatility/Session/Risk, **ไม่มี Macro** เพราะถูกตัดออกจาก scope แล้ว §15 ข้อ 10)
+  น้ำหนักเท่ากันทั้ง 6 ช่อง (equal-weight) ตามคำเตือน free-parameter ใน §16.5 —
+  สูตรแต่ละช่องเป็นการออกแบบใหม่ของ session นี้ **ยังไม่เคย validate มาก่อน**
+  weakest-link rule (§16.4) เก็บแยกเป็น flag ไม่ผสมเข้า final_score
+- `scripts/bucket_test_scorecard.py` (ใหม่) — รันจริงกับ R11/R14/R15/R17
+  (4/8 ตัวที่มี FROZEN_CFG ชัดใน script เดิม, R1/R2/R5/R8 ไม่รวมรอบนี้) บนข้อมูล
+  2015-2024 (10,678 ไม้รวม):
+  - **Pooled**: mean R ไล่ขึ้นจริงตาม gating band (<60: -0.287R, 60-75: -0.260R,
+    >75: -0.128R) correlation อ่อนมาก (Pearson r=0.041) แต่ **มีนัยสำคัญทางสถิติจริง**
+    (p=2×10⁻⁵ จาก n ใหญ่, bootstrap diff ระหว่าง bucket สูงสุด/ต่ำสุด 95% CI
+    [+0.088, +0.235]R ไม่คร่อมศูนย์) — ผ่านเกณฑ์ตัวอักษรของ §16.6 ข้อ 1 ("คะแนนสูง
+    ให้ R ดีกว่าคะแนนต่ำจริงไหม") แต่เป็น pass ที่**อ่อนมาก**
+  - **รายกลยุทธ์ไม่สม่ำเสมอ**: R14/R17 มี mean R ไล่ขึ้นตาม band จริง (correlation
+    0.06, 0.13) แต่ **R11/R15 ไม่ไล่ขึ้น** (correlation ~0.001, -0.013) — สัญญาณที่
+    เห็นใน pooled อาจมาจาก R14/R17 เป็นหลัก ไม่ใช่ pattern ที่ scorecard จับได้
+    สม่ำเสมอทุก setup
+  - **ไม่มี bucket ไหนเป็นบวก** — แม้ bucket คะแนนสูงสุดก็ยัง mean R = -0.128
+    (คาดได้ เพราะทั้ง 4 กลยุทธ์ falsified อยู่แล้ว) scorecard แค่แยก "ขาดทุนน้อยกว่า"
+    กับ "ขาดทุนมากกว่า" ได้ ไม่ได้แปลงกลยุทธ์ที่ไม่มี edge ให้มี edge
+  - **ข้อจำกัดของผลนี้**: ยังไม่เช็ค within-strategy ให้ครบ (Simpson's-paradox
+    เป็นไปได้จากการ pool), ยังไม่ทำ OOS/holdout split (ข้อมูลเดียวกับที่ strategy
+    เคย fail cost-stress มาแล้ว), ยังไม่รวม R1/R2/R5/R8
+  - **คำแนะนำ**: นี่คือสัญญาณบวกอ่อน ๆ ที่มีนัยสำคัญทางสถิติ แต่effect size เล็กมาก
+    และไม่สม่ำเสมอ — เข้าเกณฑ์ตัวอักษรให้ไป shadow-mode logging (§16.6 ข้อ 2, ไม่มี
+    execution risk เพราะยังไม่คุม risk tier) ได้ แต่**ยังไม่ควรถือว่าเป็นหลักฐานเพียงพอ
+    ที่จะให้ scorecard คุม risk tier จริง** จนกว่าจะเห็นผลที่สม่ำเสมอกว่านี้ทุก setup —
+    รอการตัดสินใจของผู้ใช้ก่อนลงทุนสร้าง shadow-mode infra ต่อ
+- Tests: `tests/test_scorecard.py` (ใหม่, 12 เทส รวม no-lookahead) — suite รวม
+  **111/111 เขียว**
+- ยืนยันว่าไม่กระทบ live path: `src/regime/rules.py`, `src/strategy/v0_rules.py`,
+  โค้ดใต้ `src/live/` ไม่มี diff เลย
+
+งานถัดไปคือ **รอผู้ใช้ตัดสินใจ**: ไปต่อ P6 shadow-mode logging (§16.6 ข้อ 2) บนพื้นฐาน
+สัญญาณอ่อนนี้ หรือพักไว้ก่อนแล้วหาหลักฐานที่แน่นกว่า (เช่น เพิ่ม R1/R2/R5/R8, ทำ OOS
+split, เช็ค per-strategy ให้ครบ) ก่อนลงทุนสร้างต่อ
 
 ### สิ่งที่ไม่เดินทางไปกับ `git clone` (ต้องย้ายเอง)
 | ของ | ขนาด | วิธี |
